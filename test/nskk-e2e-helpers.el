@@ -304,7 +304,7 @@ dispatching raw character codes directly from the string."
 Test is named nskk-e2e-NAME.  DOCSTRING describes the test.
 BODY is the test body, typically containing `nskk-e2e-with-buffer'."
   (declare (indent 2) (doc-string 2))
-  `(ert-deftest ,(intern (format "nskk-e2e-%s" name)) ()
+  `(nskk-test-case ,(intern (format "nskk-e2e-%s" name))
      ,docstring
      ,@body))
 

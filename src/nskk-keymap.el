@@ -144,8 +144,6 @@
 
 ;; kakutei-idle-state/2: (MODE IDLE-STATE)
 ;; Maps a Japanese/direct mode symbol to its kakutei idle-state keyword.
-;; Used by `nskk-current-kakutei-state' to classify the idle arm via a
-;; single O(1) hash lookup instead of a 3-branch cond.
 (nskk-prolog-define-fact-table kakutei-idle-state (:arity 2 :index :hash)
   (hiragana       hiragana-idle)
   (katakana       katakana-idle)
@@ -273,13 +271,13 @@ mode-category) and queries `state-classify/4' for the classification."
        '\?c)
       'idle-direct))
 
-(defun nskk--current-key-state ()
-  "Return current key dispatch state: `converting', `preedit', or `normal'.
-Queries `key-state-map/2' to reduce the rich classification from
-`nskk-classify-state' to a simple 3-value dispatch state."
+(defun nskk-current-key-state ()
+  "Return current key dispatch state: `converting', `preedit', or `normal'."
   (or (nskk-prolog-query-value
        `(key-state-map ,(nskk-classify-state) \?s) '\?s)
       'normal))
+
+(defalias 'nskk--current-key-state #'nskk-current-key-state)
 
 ;; kakutei-active-state/3: (CLASSIFICATION TEXT-PRESENCE KAKUTEI-STATE)
 ;; Maps (classify-state, text-presence) → kakutei state for active input.

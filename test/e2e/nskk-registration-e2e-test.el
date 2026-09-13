@@ -433,7 +433,7 @@
       (should (= case-count (length cases)))))
 )
 
-(ert-deftest nskk-registration-recursive-reader-inherits-depth-and-restores-parent ()
+(nskk-test-case nskk-registration-recursive-reader-inherits-depth-and-restores-parent
   (dolist (outcome '(success quit error))
     (nskk-e2e-with-buffer 'hiragana nil
       (let ((enable-recursive-minibuffers nil)

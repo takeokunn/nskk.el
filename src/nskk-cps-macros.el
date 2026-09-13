@@ -35,7 +35,7 @@
 OPERATOR names the bind form being expanded, for error reporting.
 Rejects a `defun/done' function: its /k takes one continuation while the
 bind forms emit two, so the failure continuation would silently arrive as
-a positional value instead.  That rejection is best-effort — the property
+a positional value instead.  That rejection is best-effort: the property
 it reads is stamped when the target's defining module loads, so it reads
 nil and the guard passes if that module has not been loaded by expansion
 time.  Do not drop a manual arity check elsewhere on the strength of it."
@@ -403,7 +403,7 @@ mapping onto one return value, and `:interactive' is unsupported.
 
 NAME/k is annotated `nskk--cps-continuation-pattern' `:3k'.  The bind
 forms emit two continuations, so binding a `:3k' function through them
-fails with a runtime arity error — unlike a `defun/done' target, which
+fails with a runtime arity error, unlike a `defun/done' target, which
 they reject while expanding.  Call NAME/k directly.
 
 CONT-NAMES is a list of exactly three symbols.  DOCSTRING is required."

@@ -357,12 +357,13 @@
               (nskk-show-mode-duration 60)
               (nskk--show-mode-overlay nil)
               (nskk--show-mode-timer nil)
-              (nskk--show-mode-last-mode 'hiragana)
+              (nskk--show-mode-last-mode nil)
               (call-count 0))
           (cl-letf (((symbol-function 'nskk--show-mode-display-inline)
                      (lambda (_s) (cl-incf call-count))))
             (nskk-show-mode-display)
-            (should (= call-count 0)))))))
+            (nskk-show-mode-display)
+            (should (= call-count 1)))))))
 
   (nskk-it "re-displays when mode changes"
     (nskk-prolog-test-with-isolated-db

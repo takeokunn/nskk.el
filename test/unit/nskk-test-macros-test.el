@@ -11,9 +11,34 @@
   (let ((definition
          (macroexpand-1
           `(,macro harness-probe ((sample integer)) ,property 16 ,seed))))
-    (eval `(lambda () ,@(cdddr definition)) t)))
+    (eval `(lambda () ,@(cddr definition)) t)))
 
-(ert-deftest nskk-test-macros-fixed-seed-replays-generated-values ()
+(nskk-test-case nskk-test-case-preserves-registration-and-body
+  (let ((name (make-symbol "nskk-test-case-probe"))
+        (observed (list nil)))
+    (unwind-protect
+        (progn
+          (eval `(nskk-test-case ,name
+                   "Registration probe."
+                   :tags '(nskk-registration-probe)
+                   :expected-result :failed
+                   (setcar observed (current-buffer)))
+                (list (cons 'observed observed)))
+          (let ((test (ert-get-test name)))
+            (should (eq (ert-test-name test) name))
+            (should (equal (ert-test-documentation test) "Registration probe."))
+            (should (equal (ert-test-tags test) '(nskk-registration-probe)))
+            (should (eq (ert-test-expected-result-type test) :failed))
+            (with-temp-buffer
+              (cl-letf (((symbol-function 'nskk--test-setup)
+                         (lambda () (error "Unexpected test setup")))
+                        ((symbol-function 'nskk--test-teardown)
+                         (lambda () (error "Unexpected test teardown"))))
+                (funcall (ert-test-body test)))
+              (should (eq (car observed) (current-buffer))))))
+      (ert-delete-test name))))
+
+(nskk-test-case nskk-test-macros-fixed-seed-replays-generated-values
   (dolist (macro '(nskk-property-test-seeded
                    nskk-property-test-with-shrinking))
     (dolist (seed '(42 123456 0))
@@ -32,7 +57,7 @@
             (push samples sequences)))
         (should (equal (car sequences) (cadr sequences)))))))
 
-(ert-deftest nskk-test-macros-false-properties-fail ()
+(nskk-test-case nskk-test-macros-false-properties-fail
   (dolist (macro '(nskk-property-test-seeded
                    nskk-property-test-with-shrinking))
     (let ((body (nskk-test-macros--property-body macro nil 42)))
@@ -40,7 +65,7 @@
                  (lambda (_generator) 8)))
         (should-error (funcall body) :type 'ert-test-failed)))))
 
-(ert-deftest nskk-test-macros-seed-override-replays-generated-values ()
+(nskk-test-case nskk-test-macros-seed-override-replays-generated-values
   (dolist (macro '(nskk-property-test-seeded
                    nskk-property-test-with-shrinking))
     (dolist (seed '(42 0))

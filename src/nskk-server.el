@@ -132,13 +132,13 @@ Used to avoid duplicate registrations (idempotent guard).")
 ;; Per the index-before-assert invariant, `nskk-prolog-set-index' is called
 ;; before any fact is added for each predicate.
 
-;; server-response-type/2 — maps response prefix string to type symbol.
+;; server-response-type/2: maps response prefix string to type symbol.
 ;; Hash-indexed on the first argument for O(1) lookup.
 (nskk-prolog-set-index 'server-response-type 2 :hash)
 (nskk-prolog-<- (server-response-type "1" found))
 (nskk-prolog-<- (server-response-type "4" miss))
 
-;; server-state/1 — dynamic connection state fact.
+;; server-state/1: dynamic connection state fact.
 ;; Hash-indexed; updated atomically by open/close.  Initialized to closed.
 (nskk-prolog-set-index 'server-state 1 :hash)
 (nskk-prolog-assert '((server-state closed)))

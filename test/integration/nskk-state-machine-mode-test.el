@@ -119,7 +119,7 @@ TRIGGER is ignored; a random valid mode is chosen."
 ;;;; Property 3: Mode Transition Clears Context
 ;;;;
 
-(ert-deftest nskk-state-machine-mode-transition-clears-context ()
+(nskk-test-case nskk-state-machine-mode-transition-clears-context
   (let ((nskk-converter-romaji-style 'standard))
     (nskk-with-prolog-entries ((user-dict-entry "かな" ("仮名" "加奈")))
       (nskk-prolog-assert '((dict-initialized)))

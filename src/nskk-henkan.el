@@ -298,29 +298,71 @@ Requires `nskk-current-state' to be bound (use inside
 ;; its primary caller nskk-henkan-do-reset) can reference them without triggering
 ;; a byte-compiler "assignment to free variable" warning.
 (defvar nskk-henkan-hide-candidates-functions)
+(defvar nskk-henkan-select-candidate-by-key-function)
+(defvar nskk-candidate-format-function)
 (defvar nskk--henkan-candidate-list-active)
+
+(defvar-local nskk--candidate-backend nil
+  "Resolved callbacks and display settings owning the current candidate list.")
+
+(autoload 'nskk-candidate-show-list "nskk-candidate-window")
+(autoload 'nskk-candidate-hide-list "nskk-candidate-window")
+(autoload 'nskk-candidate-list-select-by-key "nskk-candidate-window")
+
+(defun nskk--candidate-resolve-function (function)
+  "Resolve FUNCTION, loading an autoload before capturing its definition."
+  (let ((definition (indirect-function function)))
+    (when (autoloadp definition)
+      (autoload-do-load definition function)
+      (setq definition (indirect-function function)))
+    definition))
+
+(defun nskk--candidate-resolve-hook (hook)
+  "Return resolved functions in HOOK, including local `t' splices."
+  (let (functions)
+    (run-hook-wrapped hook
+                      (lambda (function)
+                        (push (nskk--candidate-resolve-function function) functions)
+                        nil))
+    (nreverse functions)))
+
+(defun nskk--candidate-current-backend ()
+  "Capture candidate callbacks without retaining mutable hook lists."
+  (list (nskk--candidate-resolve-hook 'nskk-henkan-show-candidates-functions)
+        (nskk--candidate-resolve-hook 'nskk-henkan-hide-candidates-functions)
+        (and nskk-henkan-select-candidate-by-key-function
+             (nskk--candidate-resolve-function nskk-henkan-select-candidate-by-key-function))
+        (and (boundp 'nskk-candidate-format-function)
+             (nskk--candidate-resolve-function nskk-candidate-format-function))
+        (copy-sequence nskk-henkan-show-candidates-keys)
+        nskk-henkan-number-to-display-candidates))
 
 (defun nskk--run-all-candidate-hide-hooks ()
   "Run every candidate hide hook and return the first signaled condition.
 Unlike `run-hooks', one failing hook does not prevent subsequent cleanup hooks."
   (let (first-condition)
-    (run-hook-wrapped
-     'nskk-henkan-hide-candidates-functions
-     (lambda (function)
+    (dolist (function (if nskk--candidate-backend
+                         (nth 1 nskk--candidate-backend)
+                       (nskk--candidate-resolve-hook
+                        'nskk-henkan-hide-candidates-functions)))
        (condition-case condition
            (funcall function)
          ((error quit)
           (unless first-condition
-            (setq first-condition condition))))
-       nil))
+            (setq first-condition condition)))))
     first-condition))
 
 (defun/done nskk--run-candidate-show-hooks-once (candidates index)
   "Run the show-candidates hooks once and mark the candidate list active.
 CANDIDATES and INDEX are passed to each hook."
+  (let ((backend (nskk--candidate-current-backend)))
+    (when (and nskk--candidate-backend
+               (not (equal backend nskk--candidate-backend)))
+      (nskk--dismiss-candidate-list))
+    (setq nskk--candidate-backend backend))
   (nskk--run-presentation-actions 'show-list #'funcall)
-  (run-hook-with-args
-   'nskk-henkan-show-candidates-functions candidates index)
+  (dolist (function (car nskk--candidate-backend))
+    (funcall function candidates index))
   (setq nskk--henkan-candidate-list-active t))
 
 (defun nskk--run-candidate-show-transaction
@@ -336,13 +378,16 @@ PREVIOUS-PHASE, and PREVIOUS-COUNT are restored after an `error' or `quit'."
      (nskk-state-set-henkan-count previous-count)
      (setq nskk--henkan-candidate-list-active nil)
      (unwind-protect
-         (condition-case nil
-             (nskk--run-all-candidate-hide-hooks)
-           ((error quit) nil))
+         (let ((inhibit-quit t))
+           (when nskk--candidate-backend
+             (condition-case nil
+                 (nskk--run-all-candidate-hide-hooks)
+               ((error quit) nil))))
        (setf (nskk-state-current-index nskk-current-state) previous-index
              (nskk-state-henkan-phase nskk-current-state) previous-phase)
        (nskk-state-set-henkan-count previous-count)
-       (setq nskk--henkan-candidate-list-active nil))
+       (setq nskk--henkan-candidate-list-active nil
+             nskk--candidate-backend nil))
      (signal (car condition) (cdr condition)))))
 
 (defun nskk--dismiss-candidate-list ()
@@ -350,12 +395,29 @@ PREVIOUS-PHASE, and PREVIOUS-COUNT are restored after an `error' or `quit'."
 Runs every `nskk-henkan-hide-candidates-functions' hook and resets
 `nskk--henkan-candidate-list-active'.  Called by any operation that exits
 active candidate list display: cancel, rollback, commit, exhaustion."
-  (let ((condition
+  (let* ((inhibit-quit t)
+         (condition
          (unwind-protect
              (nskk--run-all-candidate-hide-hooks)
-           (setq nskk--henkan-candidate-list-active nil))))
+           (setq nskk--henkan-candidate-list-active nil
+                 nskk--candidate-backend nil))))
     (when condition
       (signal (car condition) (cdr condition)))))
+
+(defun nskk--candidate-select (key candidates index)
+  "Refresh the active backend before selecting KEY from CANDIDATES at INDEX."
+  (unless (equal nskk--candidate-backend (nskk--candidate-current-backend))
+    (nskk--run-candidate-show-transaction
+     candidates index index (nskk-state-henkan-phase nskk-current-state)
+     (nskk-state-henkan-count)))
+  (condition-case condition
+      (when (nth 2 nskk--candidate-backend)
+        (funcall (nth 2 nskk--candidate-backend) key candidates index))
+    ((error quit)
+     (condition-case nil
+         (nskk--dismiss-candidate-list)
+       ((error quit) nil))
+     (signal (car condition) (cdr condition)))))
 
 (defmacro nskk--with-cleanup-runner (run-cleanup-name first-condition-name &rest body)
   "Bind RUN-CLEANUP-NAME to a cleanup-thunk runner within BODY.
@@ -471,14 +533,18 @@ the marker position plus the \u25bd marker length.  Does nothing if no preedit."
 
 ;;;; Candidate Display Hooks
 
-(defvar nskk-henkan-show-candidates-functions nil
+(defcustom nskk-henkan-show-candidates-functions '(nskk-candidate-show-list)
   "Abnormal hook called to display candidates.
 Each function is called with two arguments: CANDIDATES (a list of
-strings) and CURRENT-INDEX (the 0-based page start offset).")
+strings) and CURRENT-INDEX (the 0-based page start offset).
+Replace this hook together with hide and selection callbacks for a custom UI."
+  :type 'hook :group 'nskk-henkan)
 
-(defvar nskk-henkan-hide-candidates-functions nil
+(defcustom nskk-henkan-hide-candidates-functions '(nskk-candidate-hide-list)
   "Normal hook called to hide candidate display.
-Each function is called with no arguments.")
+Each function is called with no arguments, including after partial display
+failure.  It must release resources owned by the current buffer."
+  :type 'hook :group 'nskk-henkan)
 
 (defvar-local nskk--henkan-candidate-list-active nil
   "Non-nil when candidate list display is active.
@@ -492,10 +558,14 @@ Set by candidate window implementation via hooks.")
   "Set `nskk--henkan-candidate-list-active' to VALUE and return VALUE."
   (setq nskk--henkan-candidate-list-active value))
 
-(defvar nskk-henkan-select-candidate-by-key-function nil
+(defcustom nskk-henkan-select-candidate-by-key-function
+  #'nskk-candidate-list-select-by-key
   "Function to select a candidate by key press.
 Called with (key candidates current-index).
-Returns the selected candidate index, or nil if KEY is not valid.")
+Returns the absolute selected index, or nil if KEY is not valid.
+Nil disables key selection.  Changes take effect on the next
+candidate operation."
+  :type '(choice (const nil) function) :group 'nskk-henkan)
 
 ;;;; Error Symbols
 
@@ -511,7 +581,7 @@ Returns the selected candidate index, or nil if KEY is not valid.")
 ;;;; Dictionary Search API
 
 ;; Optional-backend adapters: these wrappers guard on `fboundp' so that
-;; nskk-server.el and nskk-program-dictionary.el remain truly optional.
+;; nskk-server.el and nskk-program-dictionary.el remain optional.
 ;; Each backend's own /k function also checks the enable flag internally.
 
 (defun/k nskk--optional-server-lookup (key)
@@ -527,7 +597,7 @@ Returns the selected candidate index, or nil if KEY is not valid.")
 
 (defun/k nskk--optional-program-dict-builtin-lookup (key)
   "Attempt built-in program-dict lookup; call on-not-found if module not loaded.
-Guards on `fboundp' so that nskk-program-dictionary.el remains truly optional."
+Guards on `fboundp' so that nskk-program-dictionary.el remains optional."
   (if (fboundp 'nskk-program-dict-builtin-lookup/k)
       (<-or result nskk-program-dict-builtin-lookup key
         :found (succeed result)
@@ -1553,7 +1623,7 @@ Uses Prolog `candidate-nav-prev-action/2' to dispatch the navigation mode."
           ('show-list-prev
            (nskk--show-candidate-list-prev)
            ;; succeed with nil: signals "showed previous list page" (no candidate selected).
-           ;; Callers using the sync wrapper receive nil — same as "not currently converting".
+           ;; Callers using the sync wrapper receive nil: same as "not currently converting".
            (succeed nil))
           ('select-prev
            (if (zerop (nskk-state-current-index nskk-current-state))
@@ -1717,7 +1787,7 @@ in place and will immediately follow the inserted candidate."
                         (list (car numeric) candidate (or expanded-raw candidate)))
                        ((and (not template) expanded-raw)
                         (list reading candidate expanded-raw))))))))
-             ;; NOTE: (overlayp obj) returns t even after delete-overlay — the
+             ;; NOTE: (overlayp obj) returns t even after delete-overlay: the
              ;; Lisp object persists but overlay-end returns nil for a deleted
              ;; overlay.  Always check overlay-end result, not just overlayp.
              (overlay-end-pos (when (and (overlayp (nskk-state-conversion-overlay))
@@ -1864,7 +1934,7 @@ Must be called inside `nskk-with-current-state'."
 
 (defun/done nskk--handle-vowel-okuri (okuri-char)
   "Handle vowel okurigana OKURI-CHAR.
-Vowel okurigana (a/i/u/e/o) is immediately complete — no following
+Vowel okurigana (a/i/u/e/o) is immediately complete: no following
 character needed.  The kana is inserted and dictionary conversion is
 triggered at once, preventing a spurious second okurigana boundary.
 Must be called inside `nskk-with-current-state'."
@@ -1880,7 +1950,7 @@ Must be called inside `nskk-with-current-state'."
 
 (defun nskk--handle-consonant-okuri (okuri-char on-consumed)
   "Handle consonant okurigana OKURI-CHAR, then call ON-CONSUMED.
-Puts the consonant into the romaji buffer for deferred kana completion —
+Puts the consonant into the romaji buffer for deferred kana completion:
 the kana is produced when the user types the following vowel (e.g. K +
 u → く).  Shows the pending consonant as an after-string overlay.
 Must be called inside `nskk-with-current-state'."
@@ -1932,7 +2002,7 @@ converted kana (falling back to the raw buffer)."
    ((string-empty-p (nskk-state-romaji-buffer))
     (nskk-reset-romaji-buffer)
     "")
-   ;; Standalone 'n' — the incremental converter returns :incomplete for
+   ;; Standalone 'n': the incremental converter returns :incomplete for
    ;; "n" (awaiting "na"/"nn"/etc.), but at conversion time it means \u3093.
    ((nskk--standalone-n-p (nskk-state-romaji-buffer))
     (nskk-reset-romaji-buffer)
@@ -2397,7 +2467,7 @@ If the user cancels, wrap around to the first candidate in list display."
                            (nskk-with-current-state
                              (nskk-state-get-metadata nskk-current-state 'okurigana-query))))
                ;; Register under the dictionary key ("ほk" for okurigana,
-               ;; the plain reading otherwise) — the key lookup uses.
+               ;; the plain reading otherwise): the key lookup uses.
                (reading (or (and (stringp query) query)
                             (nskk-state-get-metadata
                              nskk-current-state 'henkan-reading)
@@ -2810,7 +2880,7 @@ Idempotent: subsequent calls are no-ops."
 
     ;; clearable-input-var/1 is defined in nskk-input-initialize (nskk-input.el)
     ;; because the listed symbols are all nskk-input internal variables.
-    ;; Queried by `nskk-clear-conversion-context' below.
+    ;; Queried by `nskk-clear-conversion-context'.
 
     (nskk-prolog-define-fact-table disable-cleanup (:arity 2 :index :hash)
       (active       cancel-conversion)

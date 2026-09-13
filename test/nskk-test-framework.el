@@ -15,14 +15,7 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with NSKK.  If not, see <https://www.gnu.org/licenses/>.
 ;;; Commentary:
-;; This file provides a comprehensive test framework for NSKK using ERT
-;; (Emacs Lisp Regression Testing). It includes test helpers and utilities
-;; to support TDD (Test-Driven Development) and PBT (Property-Based
-;; Testing) strategies.
-;;
-;; Features:
-;; - ERT-based test framework
-;; - Test environment setup/teardown
+;; ERT fixtures and property-based test helpers.
 ;;; Code:
 (progn
   (defvar nskk-test--persistence-directory
@@ -154,13 +147,19 @@
 ;;;;
 ;;;; Test Definition Macros
 ;;;;
+(defmacro nskk-test-case (name &rest body)
+  "Register NAME without renaming it or adding fixtures.
+BODY accepts an optional docstring and ERT keyword attributes before
+the test forms."
+  (declare (indent 1) (doc-string 2))
+  `(ert-deftest ,name () ,@body))
+
 (defmacro nskk-deftest (name docstring &rest body)
   "Define an NSKK test with NAME, DOCSTRING, and BODY."
   (declare (indent 2)
            (doc-string 2))
-  `(ert-deftest
+  `(nskk-test-case
     ,(intern (format "nskk-test-%s" name))
-    ()
     ,docstring
     (let ((nskk--test-mode t)
           (nskk--test-state nil))
@@ -173,9 +172,8 @@
   "Define a unit test."
   (declare (indent 2)
            (doc-string 2))
-  `(ert-deftest
+  `(nskk-test-case
     ,(intern (format "nskk-unit-%s" name))
-    ()
     ,docstring
     (let ((nskk--test-mode t))
       (nskk--test-setup)
@@ -187,9 +185,8 @@
   "Define a performance test."
   (declare (indent 2)
            (doc-string 2))
-  `(ert-deftest
+  `(nskk-test-case
     ,(intern (format "nskk-performance-%s" name))
-    ()
     ,docstring
     (let ((nskk--test-mode t)
           (nskk--test-start-time (current-time)))

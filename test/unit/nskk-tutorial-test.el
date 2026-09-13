@@ -84,7 +84,7 @@ exactly as it would for a real keystroke."
 ;;;; Lesson Data Integrity
 ;;;;
 
-(ert-deftest nskk-tutorial-test/lessons-have-required-keys ()
+(nskk-test-case nskk-tutorial-test/lessons-have-required-keys
   "Every lesson has a string :title, a string :explanation, and a
 non-empty list of :exercises."
   (dolist (lesson nskk-tutorial--lessons)
@@ -94,7 +94,7 @@ non-empty list of :exercises."
       (should (listp exercises))
       (should (> (length exercises) 0)))))
 
-(ert-deftest nskk-tutorial-test/exercises-have-required-keys ()
+(nskk-test-case nskk-tutorial-test/exercises-have-required-keys
   "Every exercise must have :instruction, :hint, and either :expected or :validator."
   (dolist (lesson nskk-tutorial--lessons)
     (dolist (ex (plist-get lesson :exercises))
@@ -107,11 +107,11 @@ non-empty list of :exercises."
 ;;;; Mini Dictionary Integrity
 ;;;;
 
-(ert-deftest nskk-tutorial-test/mini-dict-not-empty ()
+(nskk-test-case nskk-tutorial-test/mini-dict-not-empty
   "Mini dictionary should have entries."
   (should (> (length nskk-tutorial--mini-dict) 0)))
 
-(ert-deftest nskk-tutorial-test/mini-dict-entries-are-valid ()
+(nskk-test-case nskk-tutorial-test/mini-dict-entries-are-valid
   "Each mini dictionary entry should be a cons of (string . list-of-strings)."
   (dolist (entry nskk-tutorial--mini-dict)
     (should (consp entry))
@@ -121,7 +121,7 @@ non-empty list of :exercises."
     (dolist (candidate (cdr entry))
       (should (stringp candidate)))))
 
-(ert-deftest nskk-tutorial-test/mini-dict-exercises-are-reachable ()
+(nskk-test-case nskk-tutorial-test/mini-dict-exercises-are-reachable
   "Every exercise whose :expected result requires conversion is
 reachable from some mini-dict candidate.
 Kana-only :expected values need no dictionary lookup at all.  The
@@ -148,7 +148,7 @@ equality."
 ;;;; Validator Functions
 ;;;;
 
-(ert-deftest nskk-tutorial-test/validate-hiragana-mode-when-active ()
+(nskk-test-case nskk-tutorial-test/validate-hiragana-mode-when-active
     "Hiragana mode validator should return t when in hiragana mode."
     (with-temp-buffer
       (nskk-with-mock-dict nil
@@ -157,7 +157,7 @@ equality."
         (should (nskk-tutorial--validate-hiragana-mode))
         (ignore-errors (nskk-mode -1)))))
 
-(ert-deftest nskk-tutorial-test/validate-hiragana-mode-when-ascii ()
+(nskk-test-case nskk-tutorial-test/validate-hiragana-mode-when-ascii
   "Hiragana mode validator should return nil when in ascii mode."
   (with-temp-buffer
     (nskk-with-mock-dict nil
@@ -166,7 +166,7 @@ equality."
       (should-not (nskk-tutorial--validate-hiragana-mode))
       (ignore-errors (nskk-mode -1)))))
 
-(ert-deftest nskk-tutorial-test/validate-hiragana-mode-when-no-nskk ()
+(nskk-test-case nskk-tutorial-test/validate-hiragana-mode-when-no-nskk
   "Hiragana mode validator should return nil when nskk-mode is off."
   (with-temp-buffer
     (should-not (nskk-tutorial--validate-hiragana-mode))))
@@ -176,7 +176,7 @@ equality."
 ;;;; Face Definitions
 ;;;;
 
-(ert-deftest nskk-tutorial-test/faces-defined ()
+(nskk-test-case nskk-tutorial-test/faces-defined
   "All tutorial faces should be defined."
   (should (facep 'nskk-tutorial-header-face))
   (should (facep 'nskk-tutorial-instruction-face))
@@ -189,7 +189,7 @@ equality."
 ;;;; Prolog DB Isolation
 ;;;;
 
-(ert-deftest nskk-tutorial-test/copy-object-graph-preserves-sharing ()
+(nskk-test-case nskk-tutorial-test/copy-object-graph-preserves-sharing
   "Graph copying should isolate mutable objects and preserve shared edges."
   (let* ((state (nskk-tutorial-test--make-dict-state))
          (copy (nskk-tutorial--copy-object-graph
@@ -225,7 +225,7 @@ equality."
     (should-not (nskk-trie-lookup original-trie "copied-only"))
     (should (eq original-tail (last original-clauses)))))
 
-(ert-deftest nskk-tutorial-test/copy-object-graph-preserves-cycles ()
+(nskk-test-case nskk-tutorial-test/copy-object-graph-preserves-cycles
   "Graph copying should preserve cycles, shared edges, and copied hash keys."
   (let* ((node (cons 'node nil))
          (table (make-hash-table :test 'eq))
@@ -243,7 +243,7 @@ equality."
       (should (eq (gethash copied-node copied-table) copied-node))
       (should-not (gethash node copied-table)))))
 
-(ert-deftest nskk-tutorial-test/copy-object-graph-copies-string-properties ()
+(nskk-test-case nskk-tutorial-test/copy-object-graph-copies-string-properties
   "Graph copying should copy string property values and preserve intervals."
   (let ((multibyte (copy-sequence "aあbc"))
         (unibyte (unibyte-string ?a 255 ?b ?c)))
@@ -281,7 +281,7 @@ equality."
           (should (= (aref text 0) ?a))
           (should (eq (get-text-property 0 'node text) text)))))))
 
-(ert-deftest nskk-tutorial-test/copy-object-graph-snapshots-weak-hash-entries ()
+(nskk-test-case nskk-tutorial-test/copy-object-graph-snapshots-weak-hash-entries
   "Copying a weak hash table keeps entries discovery already reached.
 Discovery takes a strong reference to every entry before the copy is
 finalized, so a collection after that point cannot drop one.  This does
@@ -335,7 +335,7 @@ the collection forced here happens after discovery has finished."
       (puthash 'copy-only t copy)
       (should (eq (gethash 'copy-only weak-table missing) missing)))))
 
-(ert-deftest nskk-tutorial-test/copy-object-graph-is-stack-safe ()
+(nskk-test-case nskk-tutorial-test/copy-object-graph-is-stack-safe
   "Graph copying should handle a cyclic list deeper than Lisp evaluation depth."
   (let* ((depth (+ max-lisp-eval-depth 100))
          (head (cons 0 nil))
@@ -434,15 +434,15 @@ the collection forced here happens after discovery has finished."
           (put purpose property old-property)
         (cl-remprop purpose property)))))
 
-(ert-deftest nskk-tutorial-test/save-dict-state-uses-actual-extra-slot-count-when-property-is-smaller ()
+(nskk-test-case nskk-tutorial-test/save-dict-state-uses-actual-extra-slot-count-when-property-is-smaller
   "Saving must copy slots omitted by a reduced subtype property."
   (nskk-tutorial-test--assert-char-table-extra-slot-copy 2 1))
 
-(ert-deftest nskk-tutorial-test/save-dict-state-uses-actual-extra-slot-count-when-property-is-larger ()
+(nskk-test-case nskk-tutorial-test/save-dict-state-uses-actual-extra-slot-count-when-property-is-larger
   "Saving must not read nonexistent slots added only to a subtype property."
   (nskk-tutorial-test--assert-char-table-extra-slot-copy 1 3))
 
-(ert-deftest nskk-tutorial-test/save-dict-state-copies-bool-vector-and-char-table ()
+(nskk-test-case nskk-tutorial-test/save-dict-state-copies-bool-vector-and-char-table
   "Saving asserted data should isolate bool vectors and char table graphs."
   (let* ((state (nskk-tutorial-test--make-dict-state))
          (purpose (make-symbol "nskk-tutorial-copy-table"))
@@ -567,7 +567,7 @@ the collection forced here happens after discovery has finished."
 ;;;; Buffer Name
 ;;;;
 
-(ert-deftest nskk-tutorial-test/buffer-name ()
+(nskk-test-case nskk-tutorial-test/buffer-name
   "Tutorial buffer should be named *NSKK Tutorial*."
   (should (string= nskk-tutorial--buffer-name "*NSKK Tutorial*")))
 
@@ -576,7 +576,7 @@ the collection forced here happens after discovery has finished."
 ;;;; Header Line
 ;;;;
 
-(ert-deftest nskk-tutorial-test/header-line-format ()
+(nskk-test-case nskk-tutorial-test/header-line-format
   "Header line should include lesson number and title."
   (with-temp-buffer
     (setq-local nskk-tutorial--current-lesson 0)
@@ -584,7 +584,7 @@ the collection forced here happens after discovery has finished."
       (should (string-match-p "レッスン 1/" header))
       (should (string-match-p "はじめに" header)))))
 
-(ert-deftest nskk-tutorial-test/advanced-lessons-exist ()
+(nskk-test-case nskk-tutorial-test/advanced-lessons-exist
   "Lessons 9-15 should exist with expected titles."
   (let ((titles (mapcar (lambda (l) (plist-get l :title))
                         nskk-tutorial--lessons)))
@@ -601,7 +601,7 @@ the collection forced here happens after discovery has finished."
 ;;;; Interaction Behavior
 ;;;;
 
-(ert-deftest nskk-tutorial-test/render-lesson-marker-independence ()
+(nskk-test-case nskk-tutorial-test/render-lesson-marker-independence
   "Each exercise's input and result markers stay distinct.
 Before the fix, every exercise's end marker converged on `point-max'."
   (nskk-tutorial-test--with-live-tutorial
@@ -623,7 +623,7 @@ Before the fix, every exercise's end marker converged on `point-max'."
           (should (<= (cdr (car sorted)) (car (cadr sorted))))
           (setq sorted (cdr sorted)))))))
 
-(ert-deftest nskk-tutorial-test/validate-exercises-grading-isolation ()
+(nskk-test-case nskk-tutorial-test/validate-exercises-grading-isolation
   "Grading one exercise leaves the other exercises and the footer
 intact.  Before the fix, marking exercise 0 correct deleted
 everything after it."
@@ -642,7 +642,7 @@ everything after it."
              (goto-char (point-min))
              (search-forward "リセット" nil t)))))
 
-(ert-deftest nskk-tutorial-test/result-area-is-protected-and-rewritten-once ()
+(nskk-test-case nskk-tutorial-test/result-area-is-protected-and-rewritten-once
   "Result areas reject typing, and grading rewrites one only when it changes.
 `nskk-tutorial--set-result' runs from `post-command-hook', so rewriting a
 region whose text is already correct would relocate point for a user
@@ -673,7 +673,7 @@ whose point sits inside it."
         (nskk-tutorial--set-result 0 "違う" 'nskk-tutorial-success-face)
         (should (/= tick (buffer-chars-modified-tick)))))))
 
-(ert-deftest nskk-tutorial-test/render-lesson-point-is-insertable ()
+(nskk-test-case nskk-tutorial-test/render-lesson-point-is-insertable
   "Point after `nskk-tutorial--render-lesson' allows a real insertion,
 while the explanation text stays uneditable.  Reading the `read-only'
 text property is not enough to prove either half: enforcement here
@@ -690,7 +690,7 @@ attempt exercises."
     (should-error (let ((last-command-event ?a)) (self-insert-command 1))
                   :type 'text-read-only)))
 
-(ert-deftest nskk-tutorial-test/keymap-reserves-only-prefixed-quit ()
+(nskk-test-case nskk-tutorial-test/keymap-reserves-only-prefixed-quit
   "Keys the lessons type as NSKK input are not captured by the mode
 map.  The map deliberately does not inherit `special-mode-map', which
 bound `h', `?', `<', `>', `-', and every digit."
@@ -704,7 +704,7 @@ bound `h', `?', `<', `>', `-', and every digit."
     (should-not (eq (key-binding (kbd "3")) 'digit-argument))
     (should-not (eq (key-binding (kbd "3")) 'nskk-tutorial-quit))))
 
-(ert-deftest nskk-tutorial-test/lesson2-romaji-end-to-end ()
+(nskk-test-case nskk-tutorial-test/lesson2-romaji-end-to-end
   "Typing lesson 2's romaji through the live keymap yields hiragana.
 Dispatching through `key-binding' (not raw `self-insert-command') is
 what proves `--maybe-navigate' routes ordinary letters into
@@ -720,7 +720,7 @@ what proves `--maybe-navigate' routes ordinary letters into
         (nskk-tutorial-test--type-string romaji)
         (should (string= (nskk-tutorial--get-input-text index) want))))))
 
-(ert-deftest nskk-tutorial-test/lesson14-azik-through-command-loop ()
+(nskk-test-case nskk-tutorial-test/lesson14-azik-through-command-loop
   "AZIK exercises use extensions rather than standard romaji alone."
   (let ((original-style nskk-converter-romaji-style))
     (unwind-protect
@@ -743,7 +743,7 @@ what proves `--maybe-navigate' routes ordinary letters into
                (should (string-empty-p nskk--romaji-buffer))))))
       (nskk-converter-load-style original-style))))
 
-(ert-deftest nskk-tutorial-test/navigation-letters-preserve-preedit-through-command-loop ()
+(nskk-test-case nskk-tutorial-test/navigation-letters-preserve-preedit-through-command-loop
   "Editable navigation letters remain NSKK input after post-command hooks."
   (nskk-tutorial-test--with-live-tutorial
     (dolist (case '(("H e n k a n n SPC C-j" "変換")
@@ -755,7 +755,7 @@ what proves `--maybe-navigate' routes ordinary letters into
       (should (equal (nskk-tutorial--get-input-text 0) (cadr case)))
       (should (= nskk-tutorial--current-lesson 3)))))
 
-(ert-deftest nskk-tutorial-test/navigation-letters-through-command-loop ()
+(nskk-test-case nskk-tutorial-test/navigation-letters-through-command-loop
   "Read-only navigation still changes and resets lessons through real keys."
   (nskk-tutorial-test--with-live-tutorial
     (nskk-tutorial-goto-lesson 4)
@@ -777,7 +777,7 @@ what proves `--maybe-navigate' routes ordinary letters into
     (should (equal (nskk-tutorial--get-input-text 0) ""))
     (should-not (aref nskk-tutorial--exercise-states 0))))
 
-(ert-deftest nskk-tutorial-test/maybe-navigate-context-sensitive ()
+(nskk-test-case nskk-tutorial-test/maybe-navigate-context-sensitive
   "`--maybe-navigate' dispatches to the matching command from a
 read-only region, and inserts through NSKK from an input area."
   (nskk-tutorial-test--with-live-tutorial
@@ -812,7 +812,7 @@ read-only region, and inserts through NSKK from an input area."
       (should (= nskk-tutorial--current-lesson before))
       (should-not (string-empty-p (nskk-tutorial--get-input-text 0))))))
 
-(ert-deftest nskk-tutorial-test/validate-exercises-completion-banner-writes-once ()
+(nskk-test-case nskk-tutorial-test/validate-exercises-completion-banner-writes-once
   "After a lesson's exercises complete, later validations do not
 re-write the buffer."
   (nskk-tutorial-test--with-live-tutorial
@@ -826,7 +826,7 @@ re-write the buffer."
       (nskk-tutorial--validate-exercises)
       (should (string= (buffer-string) snapshot)))))
 
-(ert-deftest nskk-tutorial-test/validate-exercises-preserves-point ()
+(nskk-test-case nskk-tutorial-test/validate-exercises-preserves-point
   "Grading an exercise does not move the user's point elsewhere in the
 buffer, even though the result region's length changes."
   (nskk-tutorial-test--with-live-tutorial
@@ -837,7 +837,7 @@ buffer, even though the result region's length changes."
       (nskk-tutorial--validate-exercises)
       (should (= (point) pos)))))
 
-(ert-deftest nskk-tutorial-test/navigation-boundaries-are-rejected ()
+(nskk-test-case nskk-tutorial-test/navigation-boundaries-are-rejected
   "Navigating past either end emits a message and changes nothing; an
 out-of-range lesson number is rejected the same way."
   (nskk-tutorial-test--with-live-tutorial
@@ -868,7 +868,7 @@ out-of-range lesson number is rejected the same way."
 (define-error 'nskk-tutorial-test-restore-error
     "Injected tutorial restore failure")
 
-(ert-deftest nskk-tutorial-test/restores-save-inhibition-on-normal-kill ()
+(nskk-test-case nskk-tutorial-test/restores-save-inhibition-on-normal-kill
     "Killing the tutorial buffer should restore the prior save inhibition."
     (dolist (initial-value '(nil t))
       (let ((nskk--dict-save-inhibited initial-value)
@@ -884,7 +884,7 @@ out-of-range lesson number is rejected the same way."
           (when (buffer-live-p buffer)
             (kill-buffer buffer))))))
 
-(ert-deftest nskk-tutorial-test/startup-failure-restores-state-and-kills-buffer ()
+(nskk-test-case nskk-tutorial-test/startup-failure-restores-state-and-kills-buffer
     "Startup errors should roll back all tutorial-owned state."
     (dolist (initial-value '(nil t))
       (let* ((nskk--dict-save-inhibited initial-value)
@@ -918,7 +918,7 @@ out-of-range lesson number is rejected the same way."
             (kill-buffer buffer))
           (nskk-prolog-retract sentinel-head)))))
 
-(ert-deftest nskk-tutorial-test/ownership-rejects-concurrent-tutorial ()
+(nskk-test-case nskk-tutorial-test/ownership-rejects-concurrent-tutorial
     "Only one live tutorial transaction may own process state."
     (let ((nskk-tutorial--owner nil)
           (nskk--active-buffers nil)
@@ -939,7 +939,7 @@ out-of-range lesson number is rejected the same way."
         (when (buffer-live-p challenger)
           (kill-buffer challenger)))))
 
-(ert-deftest nskk-tutorial-test/ownership-rejects-other-active-nskk-buffer ()
+(nskk-test-case nskk-tutorial-test/ownership-rejects-other-active-nskk-buffer
     "Tutorial startup must not overlap another active NSKK buffer."
     (let ((nskk-tutorial--owner nil)
           (active (generate-new-buffer " *nskk-active*"))
@@ -955,7 +955,7 @@ out-of-range lesson number is rejected the same way."
         (when (buffer-live-p tutorial)
           (kill-buffer tutorial)))))
 
-(ert-deftest nskk-tutorial-test/ownership-rejects-nskk-enable-in-other-buffer ()
+(nskk-test-case nskk-tutorial-test/ownership-rejects-nskk-enable-in-other-buffer
     "Tutorial ownership must reject NSKK activation in another buffer."
     (let ((nskk-tutorial--owner nil)
           (nskk--active-buffers nil)
@@ -981,7 +981,7 @@ out-of-range lesson number is rejected the same way."
               (nskk-mode -1)))
           (kill-buffer challenger)))))
 
-(ert-deftest nskk-tutorial-test/major-mode-change-rolls-back-transaction ()
+(nskk-test-case nskk-tutorial-test/major-mode-change-rolls-back-transaction
     "Changing tutorial major mode restores guards and ownership."
     (let ((nskk-tutorial--owner nil)
           (nskk--active-buffers nil)
@@ -1002,7 +1002,7 @@ out-of-range lesson number is rejected the same way."
         (when (buffer-live-p buffer)
           (kill-buffer buffer)))))
 
-(ert-deftest nskk-tutorial-test/rollback-completes-after-quit ()
+(nskk-test-case nskk-tutorial-test/rollback-completes-after-quit
     "Rollback must release all resources before re-signaling QUIT."
     (let ((nskk-tutorial--owner nil)
       (nskk--active-buffers nil)
@@ -1134,7 +1134,7 @@ Prolog-only `nskk-prolog-with-database-fields' macro cannot."
     (dotimes (index (length state))
       (should (eq (aref saved index) (aref state index))))))
 
-(ert-deftest nskk-tutorial-test/save-install-and-restore-exact-state ()
+(nskk-test-case nskk-tutorial-test/save-install-and-restore-exact-state
   "Tutorial state must isolate mutations and restore every exact reference."
   (let* ((state (nskk-tutorial-test--make-dict-state))
          (outside-clauses (gethash "outside/2" (aref state 0)))
@@ -1207,7 +1207,7 @@ Prolog-only `nskk-prolog-with-database-fields' macro cannot."
              (dotimes (index (length saved))
                (should-not (aref saved index))))))))))
 
-(ert-deftest nskk-tutorial-test/save-preparation-failure-does-not-publish ()
+(nskk-test-case nskk-tutorial-test/save-preparation-failure-does-not-publish
   "Preparation ERROR or QUIT must leave all process globals untouched."
   (dolist (condition '(nskk-tutorial-test-injected-error quit))
     (let ((state (nskk-tutorial-test--make-dict-state))
@@ -1255,7 +1255,7 @@ Prolog-only `nskk-prolog-with-database-fields' macro cannot."
              (dotimes (index (length saved))
                (should-not (aref saved index))))))))))
 
-(ert-deftest nskk-tutorial-test/save-publication-failure-rolls-back ()
+(nskk-test-case nskk-tutorial-test/save-publication-failure-rolls-back
   "Publication ERROR or QUIT must restore exact state and clear stale diagnostics."
   (dolist (condition '(nskk-tutorial-test-injected-error quit))
     (let ((state (nskk-tutorial-test--make-dict-state))
@@ -1307,7 +1307,7 @@ Prolog-only `nskk-prolog-with-database-fields' macro cannot."
            (should-not nskk-tutorial--dict-state-saved-p)
            (should-not nskk-tutorial--dict-rollback-diagnostic)))))))
 
-(ert-deftest nskk-tutorial-test/save-publication-rollback-failure-keeps-snapshot ()
+(nskk-test-case nskk-tutorial-test/save-publication-rollback-failure-keeps-snapshot
   "Primary condition survives rollback and warning ERROR or QUIT."
   (dolist (rollback-condition '(nskk-tutorial-test-restore-error quit))
     (dolist (warning-condition '(nskk-tutorial-test-restore-error quit))
@@ -1398,7 +1398,7 @@ Prolog-only `nskk-prolog-with-database-fields' macro cannot."
              (should-not
               nskk-tutorial--dict-rollback-diagnostic))))))))
 
-(ert-deftest nskk-tutorial-test/restore-failure-retains-retryable-snapshot ()
+(nskk-test-case nskk-tutorial-test/restore-failure-retains-retryable-snapshot
     "Restore ERROR or QUIT must retain exact roots until a retry succeeds."
     (dolist (condition '(nskk-tutorial-test-restore-error quit))
       (let ((state (nskk-tutorial-test--make-dict-state))
@@ -1451,7 +1451,7 @@ Prolog-only `nskk-prolog-with-database-fields' macro cannot."
              (should-not nskk-tutorial--dict-state-saved-p)))))))
 
 
-(ert-deftest nskk-tutorial-test/startup-quit-restores-state-and-buffer ()
+(nskk-test-case nskk-tutorial-test/startup-quit-restores-state-and-buffer
     "Startup QUIT must preserve its payload and roll back tutorial state."
     (let ((nskk-tutorial--owner nil)
           (nskk--active-buffers nil)
@@ -1474,7 +1474,7 @@ Prolog-only `nskk-prolog-with-database-fields' macro cannot."
       (should-not nskk--dict-save-inhibited)
       (should (eq nskk--persistence-inhibited 'previous))))
 
-(ert-deftest nskk-tutorial-test/startup-restore-failure-preserves-retry-state ()
+(nskk-test-case nskk-tutorial-test/startup-restore-failure-preserves-retry-state
     "Restore ERROR or QUIT must retain the retryable tutorial transaction."
     (dolist (restore-condition '(nskk-tutorial-test-restore-error quit))
       (let ((nskk-tutorial--owner nil)

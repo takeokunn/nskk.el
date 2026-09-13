@@ -1,5 +1,5 @@
 {
-  description = "NSKK - Next-generation SKK for Emacs";
+  description = "NSKK - SKK for Emacs";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -46,7 +46,7 @@
             shellHook = ''
               cat <<'USAGE_EOF'
 
-=== NSKK Development Shell (Debug Mode Enabled) ===
+=== NSKK Development Shell ===
 
 Automated checks:
   nix flake check   # Run all checks (compile + test + lint) in sandbox

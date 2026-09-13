@@ -1433,7 +1433,7 @@
         (should (= 0 (nskk-cache-lfu-hits cache)))
         (should (= 0 (nskk-cache-lfu-misses cache)))))))
 
-(ert-deftest nskk-cache-adversarial-owned-arbitrary-keys-and-values ()
+(nskk-test-case nskk-cache-adversarial-owned-arbitrary-keys-and-values
   (dolist (strategy '(lru lfu))
     (let ((cache (nskk-cache-create :type strategy :capacity 1)))
       (dotimes (index 20)
@@ -1479,7 +1479,7 @@
         (should (eq (nskk-cache-get cache key) new-value))
         (should (= 1 (nskk-cache-size cache)))))))
 
-(ert-deftest nskk-cache-adversarial-key-copy-failure-is-atomic ()
+(nskk-test-case nskk-cache-adversarial-key-copy-failure-is-atomic
   (dolist (strategy '(lru lfu))
     (dolist (condition '(error quit))
       (let ((fixture
@@ -1495,7 +1495,7 @@
         (nskk-cache-test--assert-transaction-fixture
          strategy fixture)))))
 
-(ert-deftest nskk-cache-adversarial-lru-helper-fault-rolls-back ()
+(nskk-test-case nskk-cache-adversarial-lru-helper-fault-rolls-back
   (dolist (condition '(error quit))
     (dolist (case '((nskk-cache-lru--move-to-head get)
                     (nskk-cache-lru--remove-node invalidate)
@@ -1543,7 +1543,7 @@
             (should (= 1 (nskk-cache-lru-hits cache)))
             (should (= 0 (nskk-cache-lru-misses cache)))))))))
 
-(ert-deftest nskk-cache-adversarial-lfu-helper-fault-rolls-back ()
+(nskk-test-case nskk-cache-adversarial-lfu-helper-fault-rolls-back
   (dolist (condition '(error quit))
     (dolist (case '((nskk-cache-lfu--remove-from-freq-bucket get)
                     (nskk-cache-lfu--update-freq get)
@@ -1565,7 +1565,7 @@
         (nskk-cache-test--assert-transaction-fixture
          'lfu fixture)))))
 
-(ert-deftest nskk-cache-adversarial-lru-put-existing-fault-rolls-back ()
+(nskk-test-case nskk-cache-adversarial-lru-put-existing-fault-rolls-back
   (dolist (condition '(error quit))
     (dotimes (_iteration 3)
       (let* ((fixture (nskk-cache-test--make-transaction-fixture 'lru))
@@ -1576,7 +1576,7 @@
            (nskk-cache-put cache "a" (list :new condition))))
         (nskk-cache-test--assert-transaction-fixture 'lru fixture)))))
 
-(ert-deftest nskk-cache-adversarial-lfu-put-existing-fault-rolls-back ()
+(nskk-test-case nskk-cache-adversarial-lfu-put-existing-fault-rolls-back
   (dolist (condition '(error quit))
     (dotimes (_iteration 3)
       (let* ((fixture (nskk-cache-test--make-transaction-fixture 'lfu))
@@ -1587,7 +1587,7 @@
            (nskk-cache-put cache "a" (list :new condition))))
         (nskk-cache-test--assert-transaction-fixture 'lfu fixture)))))
 
-(ert-deftest nskk-cache-adversarial-prepared-get-contract ()
+(nskk-test-case nskk-cache-adversarial-prepared-get-contract
 (dolist (strategy (quote (lru lfu)))
   (let* ((cache (nskk-cache-create :type strategy :capacity 2))
          (stored (list :stored strategy))
@@ -1669,7 +1669,7 @@
     (should (= nil-found 1))
     (should (= miss-found 1)))))
 
-(ert-deftest nskk-cache-adversarial-preparer-fault-is-atomic ()
+(nskk-test-case nskk-cache-adversarial-preparer-fault-is-atomic
 (dolist (strategy (quote (lru lfu)))
   (dolist (condition (quote (error quit)))
     (let* ((fixture (nskk-cache-test--make-transaction-fixture strategy))

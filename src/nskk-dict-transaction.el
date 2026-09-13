@@ -42,9 +42,6 @@
 
 (define-error 'nskk-dict-error "Dictionary error")
 
-;; One level, unlike the two-level `nskk-dict-<domain>-<condition>' scheme the
-;; rest of this block follows: the name predates that scheme and is asserted on
-;; by `:type' in the test suite, so renaming it would be a breaking change.
 (define-error 'nskk-dict-rollback-incomplete
               "Dictionary rollback remains incomplete"
               'nskk-dict-error)
@@ -375,7 +372,6 @@ tables owns its own sentinel, as `nskk--prolog-cache-missing' does.")
 
 (defun nskk-dict-transaction--non-granting-acl-p (acl)
   "Return non-nil for no ACL or a known deny-only Darwin ACL text ACL."
-  ;; Trust the native ACL-to-text API, not a claim that it exposes unknown ACEs.
   ;; Known deny entries cannot add access beyond the separately checked modes.
   (or (null acl)
       (and (eq system-type 'darwin)

@@ -2865,9 +2865,8 @@
             
         (nskk-state-set-candidates nskk-current-state '("X" "Y"))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
-        (nskk-with-mocks ((run-hook-with-args
-                           (lambda (_hook &rest args)
-                             (setq captured-args args))))
+        (let ((nskk-henkan-show-candidates-functions
+               (list (lambda (&rest args) (setq captured-args args)))))
 	  (nskk--wrap-to-first-candidate))
         (should (equal (car captured-args) '("X" "Y")))
         (should (= (cadr captured-args) 0)))
@@ -5548,7 +5547,7 @@
           (should (member "かんが" completions))
           (should-not (member "きょう" completions)))))))
 
-(ert-deftest nskk-undo-kakutei-test/restores-owned-state-on-failure ()
+(nskk-test-case nskk-undo-kakutei-test/restores-owned-state-on-failure
   "Restore every owned object after each injectable undo failure."
   (dolist (spec '((before-change error)
                   (before-change quit)
@@ -5955,7 +5954,7 @@
   (should (marker-position (nskk-state-conversion-start-marker)))
   (should (overlay-buffer (nskk-state-conversion-overlay))))
 
-(ert-deftest nskk-test-commit-learning-fault-matrix ()
+(nskk-test-case nskk-test-commit-learning-fault-matrix
   (dolist (list-active '(nil t))
     (dolist (mode '(hiragana abbrev))
       (dolist (failure-type '(error quit))
@@ -6012,7 +6011,7 @@
                  fixture-state fixture-candidates fixture-overlay
                  fixture-pending-overlay))))))))))
 
-(ert-deftest nskk-test-commit-cleanup-fault-matrix ()
+(nskk-test-case nskk-test-commit-cleanup-fault-matrix
   (dolist (list-active '(nil t))
     (dolist (mode '(hiragana abbrev))
       (dolist (failure-type '(error quit))
@@ -6139,7 +6138,7 @@
                  fixture-state fixture-candidates fixture-overlay
                  fixture-pending-overlay))))))))))
 
-(ert-deftest nskk-test-commit-cleanup-preserves-first-condition ()
+(nskk-test-case nskk-test-commit-cleanup-preserves-first-condition
   (let ((candidate (propertize "候補" 'source 'original))
         (reading "よみ")
         (study-calls 0)
@@ -6194,7 +6193,7 @@
         fixture-candidate fixture-mode fixture-reading fixture-state
         fixture-candidates fixture-overlay fixture-pending-overlay)))))
 
-(ert-deftest nskk-test-commit-normal-no-reading-no-learn ()
+(nskk-test-case nskk-test-commit-normal-no-reading-no-learn
   (dolist (scenario '(normal no-reading no-learn))
     (ert-info ((format "scenario=%S" scenario))
               (let* ((reading (unless (eq scenario 'no-reading) "よみ"))
@@ -6239,7 +6238,7 @@
                     fixture-candidates fixture-overlay
                     fixture-pending-overlay)))))))
 
-(ert-deftest nskk-henkan-okuri-registration-undo-atomic ()
+(nskk-test-case nskk-henkan-okuri-registration-undo-atomic
   (dolist (failure '(nil error quit))
     (nskk-prolog-test-with-isolated-db
       (nskk--dict-publish-user-entries
@@ -6282,7 +6281,7 @@
               (should (equal (nskk--dict-user-entry-text '("かk" ("描")))
                              "かk /描;draw/[け/描;draw/]/\nかk /影;shadow/[く/影;shadow/]/\n")))))))))
 
-(ert-deftest nskk-henkan-okuri-recursive-registration-context ()
+(nskk-test-case nskk-henkan-okuri-recursive-registration-context
   (let ((nskk--registration-okuri-kana "いて") observed committed)
     (cl-letf (((symbol-function 'nskk--read-registration-entry)
                (lambda (_reading)
@@ -6295,7 +6294,7 @@
       (should-not observed)
       (should (equal committed "いて")))))
 
-(ert-deftest nskk-henkan-okuri-register-and-public-purge-context ()
+(nskk-test-case nskk-henkan-okuri-register-and-public-purge-context
   (nskk-prolog-test-with-isolated-db
     (nskk--dict-publish-user-entries
      '(("かk" ("書" "描") . "[いて/書/描/]/[け/書/]/")))
@@ -6323,7 +6322,7 @@
           (should (equal (nskk--dict-user-entry-text '("かk" ("書" "描")))
                          "かk /書/描/[いて/書/描/]/[け/書/]/\n")))))))
 
-(ert-deftest nskk-henkan-tab-dictionary-row-order ()
+(nskk-test-case nskk-henkan-tab-dictionary-row-order
   (nskk-prolog-test-with-isolated-db
     (dolist (predicate '(user-dict-entry system-dict-entry))
       (nskk-prolog-retract-all predicate 2)
@@ -6335,7 +6334,7 @@
     (should (equal (nskk--dcomp-search-prefix "かん")
                    '("かんきょう" "かんじ" "かんきん" "かんり" "かんけい")))))
 
-(ert-deftest nskk-henkan-tab-public-key-pending-n-cancel ()
+(nskk-test-case nskk-henkan-tab-public-key-pending-n-cancel
   (nskk-prolog-test-with-isolated-db
     (save-window-excursion
       (with-temp-buffer
@@ -6347,7 +6346,7 @@
           (should (equal (nskk-state-romaji-buffer) ""))
           (should (eq (nskk-state-henkan-phase nskk-current-state) 'on)))))))
 
-(ert-deftest nskk-henkan-dcomp-multiple-page-boundaries ()
+(nskk-test-case nskk-henkan-dcomp-multiple-page-boundaries
   (let ((nskk-dcomp-multiple-rows 7)
         (candidates '("かんあ" "かんい" "かんう" "かんえ" "かんお"
                       "かんか" "かんき" "かんく" "かんけ" "かんこ")))
@@ -6369,20 +6368,20 @@
                                                             (1+ position))))))
         (should (equal selected (nth index candidates)))))))
 
-(ert-deftest nskk-henkan-dcomp-multiple-single-row-page ()
+(nskk-test-case nskk-henkan-dcomp-multiple-single-row-page
   (let ((nskk-dcomp-multiple-rows 1))
     (should (equal (substring-no-properties
                     (nskk--dcomp-multiple-build-string '("かんあ" "かんい")
                                                       1 "かん"))
                    "  かんい"))))
 
-(ert-deftest nskk-henkan-dcomp-multiple-empty-page ()
+(nskk-test-case nskk-henkan-dcomp-multiple-empty-page
   (let ((nskk-dcomp-multiple-rows 7))
     (should (equal (nskk--dcomp-multiple-build-string nil -1 "かん") "")))
   (let ((nskk-dcomp-multiple-rows 0))
     (should (equal (nskk--dcomp-multiple-build-string '("かんあ") 0 "かん") ""))))
 
-(ert-deftest nskk-henkan-numeric-four-commit-persists-selected-raw-identity ()
+(nskk-test-case nskk-henkan-numeric-four-commit-persists-selected-raw-identity
   (dolist (variant '(expanded literal template no-learn literal-no-learn))
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-set-index 'user-dict-entry 2 :trie)
@@ -6427,7 +6426,7 @@
            (should (equal (nskk--dict-user-annotation "34こ" "卅四")
                           (and (eq variant 'literal) "expanded")))))))))
 
-(ert-deftest nskk-henkan-numeric-raw-expansion-first-semicolon ()
+(nskk-test-case nskk-henkan-numeric-raw-expansion-first-semicolon
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-assert '((user-dict-entry "34" ("卅四個"))))
     (dolist (fixture '(("卅四個;inner" "#4個;outer" "卅四個" "卅四個;inner個;outer")
@@ -6444,7 +6443,7 @@
         (should (equal (caddr record) (nth 3 fixture)))
         (should (equal (nth 3 record) (cadr fixture)))))))
 
-(ert-deftest nskk-henkan-numeric-undo-preserves-raw-before-expansion ()
+(nskk-test-case nskk-henkan-numeric-undo-preserves-raw-before-expansion
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-assert '((user-dict-entry "34" ("卅四個"))))
     (nskk-prolog-assert
@@ -6496,7 +6495,7 @@
                            "▼卅四個"))
             (should-not nskk--last-kakutei-record)))))))
 
-(ert-deftest nskk-henkan-numeric-backend-concrete-origin ()
+(nskk-test-case nskk-henkan-numeric-backend-concrete-origin
   "Concrete candidates retain identity without expanding literal numeric codes."
   (nskk-prolog-test-with-isolated-db
     (let* ((literal (propertize "#4" 'nskk-no-learn t))

@@ -146,7 +146,7 @@ rule was tentatively emitted."
 (defun nskk--deferred-vowel-shadow-policy-for-input (input)
   "Return the deferred vowel-shadow continuation policy for INPUT.
 Returns `nskk--deferred-vowel-shadow-uppercase-vowel-continue-policy' for
-`ch', `sh', and `th' — the three standard AZIK h-extension prefixes that
+`ch', `sh', and `th': the three standard AZIK h-extension prefixes that
 users commonly encounter in conversion readings (ちゅう, すう, つう).
 Other vowel-shadow keys (e.g. `kh'→きゅう, `nh'→にゅう) are intentionally
 excluded: their uppercase-vowel continuations are rare enough that the
@@ -454,7 +454,6 @@ Six arms in priority order:
 Returns non-nil when the sticky-shift action was consumed,
 nil when falling through to self-insert."
   (cond
-   ;; Arm 1: double-semicolon cancel
    (nskk--sticky-shift-pending
     (let ((was-immediate (eq nskk--sticky-shift-pending 'immediate)))
       (when was-immediate
@@ -462,32 +461,27 @@ nil when falling through to self-insert."
         (nskk-cancel-preedit)
         (insert "；"))
       t))
-   ;; Arm 2: converting (▼) state — fall through
    ((and nskk-current-state
          (nskk-state-p nskk-current-state)
          (nskk-prolog-holds-p
           `(converting-phase ,(nskk-state-henkan-phase nskk-current-state))))
     nil)
-   ;; Arm 3: preedit with kana — arm okurigana
    ((and (nskk-conversion-start-active-p)
          (nskk-has-preedit))
     (setq nskk--sticky-shift-pending 'okurigana)
     (unless (eq (char-before) ?*)
       (insert nskk-okurigana-marker))
     t)
-   ;; Arm 4: preedit-pending (▽ without kana) — cancel + insert ";"
    ((nskk-conversion-start-active-p)
     (nskk-cancel-preedit)
     (insert "；")
     t)
-   ;; Arm 5: Japanese mode, no preedit — immediate ▽
    ((and nskk-current-state
          (nskk-prolog-holds-p
           `(japanese-mode ,(nskk-state-mode nskk-current-state))))
     (nskk--setup-henkan-start-marker ?\;)
     (setq nskk--sticky-shift-pending 'immediate)
     t)
-   ;; Arm 6: non-Japanese — fall through
    (t nil)))
 
 (defun/k nskk-handle-semicolon-key ()
@@ -643,11 +637,10 @@ Calls on-not-found when the list is not active or CHAR did not match."
     (fail))
    (t
     (nskk-debug-log "[INPUT] candidate-selection: char=%c" char)
-    (let ((index (when nskk-henkan-select-candidate-by-key-function
-                   (funcall nskk-henkan-select-candidate-by-key-function
+    (let ((index (nskk--candidate-select
                             char
                             (nskk-state-candidates nskk-current-state)
-                            (nskk-state-current-index nskk-current-state)))))
+                            (nskk-state-current-index nskk-current-state))))
       (if index
           (progn
             (setf (nskk-state-current-index nskk-current-state) index)
@@ -920,7 +913,7 @@ Actions:
 CHAR is inserted directly after the ▽ preedit marker into the buffer.
 Dictionary lookup is triggered by `nskk-start-conversion' when Space
 is pressed: it extracts text between ▽ and point as the dictionary key.
-CHAR bypasses the romaji buffer — ASCII input is used verbatim as the
+CHAR bypasses the romaji buffer: ASCII input is used verbatim as the
 lookup key, as expected in abbrev mode."
   (insert char))
 
@@ -1002,7 +995,7 @@ emitting ん and leaving the consonant pending.  Also clears
 `nskk--romaji-classify-cache' so stale memoized lookups are evicted."
   (clrhash nskk--romaji-classify-cache)
   (nskk-prolog-define-fact-table romaji-classify (:arity 3 :index :list)
-    ;; nn-double: highest priority — n+n sequence
+    ;; nn-double: highest priority: n+n sequence
     (nn-double      nn             \?result-type)
     ;; azik-deferred: doubled eligible consonant with a complete match
     (azik-deferred  eligible-match \?result-type)
@@ -1075,24 +1068,6 @@ The cache is cleared whenever the classification rules are reasserted."
      key
      '\?class
      'no-match)))
-
-;; Classification taxonomy for `nskk-convert-input-to-kana/k':
-;;
-;;  Priority  Class           Trigger condition
-;;  --------  --------------  ---------------------------------------------------
-;;  1         nn-double       last=n AND char=n → emit ん, clear buffer
-;;  2         azik-deferred   same doubled consonant, AZIK match → emit kana
-;;                            tentatively; may be retroactively corrected to っ
-;;                            on the next vowel input
-;;  3         sokuon          same doubled consonant, no AZIK match → emit っ
-;;  4         n-consonant     last=n AND char is not a hatsuon-blocker AND
-;;                            no complete match exists for the combined input.
-;;                            emit ん for the pending n, then process char.
-;;                            Yields to `match' when an AZIK rule matches
-;;                            (e.g. "nq"→"ない", "nk"→"にん" in AZIK mode).
-;;  5         match           converter returned a kana string → emit kana
-;;  6         incomplete      converter returned :incomplete → accumulate
-;;  7         no-match        no rule applies → pass input through as-is
 
 (defun/done nskk--apply-all-deferred-corrections (char)
   "Apply all pending retroactive kana corrections for CHAR.
@@ -1440,7 +1415,7 @@ Result (first arg): doubled-eligible symbol for romaji-classify/3.
 Also clears `nskk--romaji-classify-cache' so stale memoized lookups are evicted."
   (clrhash nskk--romaji-classify-cache)
   (nskk-prolog-define-fact-table doubled-context (:arity 6 :index :list)
-    ;; Priority 1: n+n — most specific n-prefix rule
+    ;; Priority 1: n+n: most specific n-prefix rule
     (nn              yes yes \?so \?no \?rt)
     ;; Priority 2: last=n + eligible consonant, not a complete match
     (n-consonant     yes no  \?so yes incomplete)
@@ -1510,7 +1485,7 @@ Idempotent: subsequent calls are no-ops."
     ;; Input state variables to clear on mode switch / context reset.
     ;; Queried by `nskk-clear-conversion-context' (nskk-henkan.el) for
     ;; dynamic iteration.  Defined here because these are all nskk-input
-    ;; internal variables — the owner module declares the table.
+    ;; internal variables: the owner module declares the table.
     (nskk-prolog-define-fact-table clearable-input-var (:arity 1 :index :list)
       (nskk--numeric-mode)
       (nskk--sticky-shift-pending)

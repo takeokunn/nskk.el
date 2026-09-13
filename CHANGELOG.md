@@ -1,7 +1,5 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
-
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
@@ -148,9 +146,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The Prolog `fullwidth-char/2` rule keeps its own arithmetic: a rule body
   cannot call into Elisp, and generating a fact per code point would
   replace an affine range with a table.
-- Added region coverage for converting while the mark is set but inactive
-  and `mark-even-if-inactive` is nil, and kana coverage for the new
-  helper's space, range-boundary, underscore and passthrough cases.
 - The Prolog engine's first-solution query API (`nskk-prolog-prove-one`,
   `nskk-prolog-query-one`, `nskk-prolog-query-value`, `nskk-prolog-query-values`)
   is now defined with the project's CPS macros, so a caller using the `/k`
@@ -159,24 +154,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed the `presentation-action/2` Prolog fact table. Registrations were
   written to it and nothing ever queried it; presentation-action lookup now
   reads only the alist that already served every caller.
-- Split `nskk-prolog-copy-term`, `nskk-prolog-set-index`, `nskk-prolog-assert`,
-  `nskk-prolog-retract` and `nskk-prolog-retract-all` into named helpers, and
-  dropped the `progn` wrappers the surrounding syntax did not require.
 - Added `nskk-prolog-state-variables`, `nskk-dict-index-variables`, and
   matching reflection constants so generic snapshot/restore and test
   machinery can enumerate tracked state without naming private symbols.
 - Added `nskk-dict-transaction.el`, extracting the dictionary's
   transactional load/save/rollback machinery into its own module.
-- Merged the inline module's two per-style display builders into one
-  style-taking function and routed it, the candidate list and the
-  annotation display through `nskk-display-sanitize`. Output is identical
-  including text properties.
-- Eliminated cross-module references to private (`nskk--*`) symbols across
-  the source tree, unifying state ownership behind the new accessor API
-  and a Prolog-fact registration protocol (module-initialized flags,
-  clearable-input variables) plus a presentation-action registry, in place
-  of hardcoded cross-module knowledge. That change renamed and removed
-  nothing; for removals see the Removed section above.
 - `nskk-state-create` is now a plain function. It previously used the CPS
   definer, but its failure continuation was unreachable, so the generated
   `nskk-state-create/k` has been removed along with it.
@@ -201,26 +183,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Folded the tutorial's private deep-copy routine into
   `nskk-prolog-copy-term`, which gained an optional caller-supplied memo
   table, removing a second implementation of the same graph copy.
-- Rebuilt the AZIK rule tables as data. The compile-time rule-generation
-  macros were replaced by pure functions that expand one consonant row into
-  `(ROMAJI KANA)` pairs, collected into `defconst` tables and asserted
-  through `nskk-prolog-bulk-facts`, which is the one fact-assertion form
-  that expands without a `progn`. `nskk--init-azik-rules` and
-  `nskk--azik-init-core-and-compat-rules` are decomposed into named phase
-  functions, and the core and compatibility rules become 13 per-category
-  constants, appended in the order they were previously asserted in. The
-  generated rule set is unchanged.
-- Reshaped the mode-line module: cursor-color resolution now uses the
-  project's CPS found/not-found pair, the mode-line indicator consumes that
-  pair's continuations directly instead of a nil test, and the all-frames
-  cursor restore delegates to a per-frame helper rather than recursing
-  through its own public entry point. Behavior and public signatures are
-  unchanged.
-- Decomposed the henkan pipeline's large cleanup and commit functions into
-  named helpers, and replaced the four hand-rolled `cl-labels` cleanup
-  ladders with a shared `nskk--with-cleanup-runner` macro. Each call site
-  keeps its own `inhibit-quit` behaviour: commit and reset stay
-  interruptible, context-clear and registration stay uninterruptible.
 - Changed `nskk-reset-henkan-state` and `nskk-set-active-candidates` from
   macros to functions. Both only ever received already-evaluated arguments,
   so no call site changed.
@@ -228,14 +190,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ordinary function returning the converted kana. It never signalled
   absence, so its not-found continuation was unreachable; the generated
   `nskk-convert-input-to-kana-final/k` is gone.
-- Replaced six `fboundp` existence checks in the region command tests with
-  coverage for paths they left untested: conversion of a partial region
-  with surrounding text left intact, point placement after a successful
-  conversion, an interior region resolved through the interactive bounds
-  spec, rejection of a mark left active while `transient-mark-mode` is
-  off, mark reactivation when the failing body itself deactivated the
-  mark, a dakuten combination that shortens the converted span, and the
-  0x7E/U+FF5E boundary of the ASCII/full-width range.
 - Reworked the skkserv client. Connection setup, teardown and rollback are
   split into named helpers; the duplicated poll-budget normalisation is now a
   single function; and Prolog rollback uses the engine's own
@@ -244,27 +198,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the hand-rolled version left untouched. `nskk-server-live-p` and the private
   annotation stripper are plain functions instead of CPS definitions, so the
   generated `nskk-server-live-p/k` wrapper no longer exists.
-- Replaced the skkserv unit suite. Its six `nskk-deftest-table` blocks sat
-  inside `nskk-it` bodies, so their rows registered as zero runnable tests;
-  the rewritten suite registers 37 table rows and covers the poll budget,
-  response byte cap, fail-closed coding preflight, candidate sanitisation,
-  the exactly-one-continuation invariant, resource ownership, rollback and
-  post-send teardown.
-- Restored skkserv test coverage that the suite replacement had dropped:
-  the async-connect path (timeout give-up, non-finite and non-numeric
-  connect budgets, per-poll budget accounting, wall-clock-jump immunity,
-  and resource release when initialisation signals or quits), fail-closed
-  behaviour and zero-mutation of public state when the coding preflight
-  quits at each of its four stages, configure-time rollback across five
-  fault stages crossed with error and quit, reuse of one process and one
-  owned buffer across repeated opens, and killing an owned buffer without
-  running `kill-buffer-hook` or the query functions.
 - Removed the dictionary-registration continuation layer in the henkan
   pipeline. `nskk--run-registration-session/k` and the CPS wrapper
   `nskk-start-registration/k` are gone, collapsed into the ordinary
   function `nskk-start-registration`, which returns the registered word or
-  nil. Both layers accepted a not-found continuation that could never fire
-  — each called only its found continuation, and every call site passed
+  nil. Both layers accepted a not-found continuation that could never fire:
+  each called only its found continuation, and every call site passed
   `ignore`. The synchronous `nskk-start-registration` keeps its name,
   argument and return value, so its callers are unaffected. The
   `package-lint` prefix allowlist in the `Makefile` loses its now-unused
@@ -297,15 +236,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Made the debug module's hand-written CPS continuation-pattern declaration
   visible during byte compilation, so the CPS bind forms' guard against
   binding a `defun/done` function is no longer inert while the file compiles.
-- Restructured the resource lifecycle in `nskk-isearch.el`: the two
-  near-identical reconciliation loops and the three copies of the
-  cleanup-collection helper are now shared condition-plumbing functions, and
-  the retry bound is derived from the number of resources being converged
-  instead of written as a literal. The mode-indicator lookup moved to the
-  project's CPS macros, so the prompt advice consumes it through explicit
-  success and failure continuations rather than a nil sentinel. The
-  `(PHYSICAL OWNERSHIP)` snapshot shape that `nskk.el` reads for activation
-  rollback is unchanged.
 - Reduced the kana module to continuation-passing style only where a
   conversion can actually fail, returning the character predicates and the
   total zenkaku/hankaku converters to plain functions. Public function names
@@ -335,8 +265,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`nskk--converter-copy-prolog-state`) from the converter module.
 - Removed the converter's batch romaji-conversion API, which had no caller
   in `src/`: the public `nskk-convert-romaji` (with its `/k` variant and
-  `nskk-convert-romaji--internal`) and the sokuon/hatsuon engine beneath it
-  — `nskk--convert-loop`, `nskk--convert-step`, `nskk--convert-step-n`,
+  `nskk-convert-romaji--internal`) and the sokuon/hatsuon engine beneath it:
+  `nskk--convert-loop`, `nskk--convert-step`, `nskk--convert-step-n`,
   `nskk--sokuon-p` and `nskk--romaji-char-max`. Production input handling
   applies its own sokuon and hatsuon rules in `nskk-input.el` and never
   called these; the shipped behaviour is covered by the kana-input E2E
@@ -348,7 +278,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   callers use `nskk-converter-lookup` directly.
 - Removed the macros `nskk-converter-define-rules` and
   `nskk-converter-define-style`, which had no caller outside their own
-  tests — `nskk-azik.el` writes its initializer by hand and registers it
+  tests. `nskk-azik.el` writes its initializer by hand and registers it
   through `nskk-converter-register-style`. Also removed the unused setters
   `nskk-converter-set-style-transaction-hash-tables` and
   `nskk-converter-set-style-transaction-variables`; the corresponding
@@ -469,9 +399,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   **Variables marked `:risky t`** (Emacs blocks even if added to
   `safe-local-variable-values`):
-  - `nskk-program-dict-enable`, `nskk-program-dicts` — control arbitrary
+  - `nskk-program-dict-enable`, `nskk-program-dicts`: control arbitrary
     Emacs Lisp callbacks and external shell process execution
-  - `nskk-server-enable`, `nskk-server-host`, `nskk-server-portnum` — control
+  - `nskk-server-enable`, `nskk-server-host`, `nskk-server-portnum`: control
     plaintext TCP connections to skkserv instances
 
   **Variables with `:safe` removed** (Emacs prompts before applying):
@@ -498,79 +428,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   current candidate and move the cursor, instead of navigating candidates. Use
   SPC/x for candidate navigation (ddskk-compatible behavior).
 
-  **Migration**: If you previously used C-n/C-p to navigate candidates, use
-  SPC (next candidate) and x (previous candidate) instead.
+### Packaging
 
-### Changed
-
-- C-n/C-p/up/down in converting mode (candidate selection): Now commits
-  candidate then moves cursor (ddskk-compatible behavior)
-
-### Code Quality (MELPA preparation)
-
-- **`nskk--compute-phase/text-presence/mode-category` unit tests**: Added 16 unit tests
-  for the three orthogonal feature-dimension helpers in `nskk-keymap.el` covering all
-  return values (converting/henkan-on/idle, has-text/no-text, japanese/marker-mode/other),
-  nil-state guards, priority ordering, and exhaustive-mode sweeps.
-- **`nskk-prolog-trie-has-prefix-p` unit tests**: Added 6 unit tests covering prefix
-  match, exact match (exact key is valid prefix), no-match, no-trie-configured guard,
-  Japanese kana multi-key prefix, and empty-string root invariant.
-
-- **Positive-first `if (not ...)` refactoring**: Converted four CPS guard sites from
-  `(if (not guard) (fail) body)` to `(if guard body (fail))` across `nskk-state.el`
-  (`nskk-state-set/k`), `nskk-henkan.el` (`nskk-core-search/k`), and
-  `nskk-program-dictionary.el` (`nskk-program-dict-lookup/k`,
-  `nskk-program-dict-builtin-lookup/k`).
-- **`(require 'subr-x)` and `(require 'cl-lib)` in `nskk-henkan.el`**: Added missing
-  explicit requires; `string-empty-p` used in 8 sites requires `subr-x`.
-- **`(when (not ...))` → `(unless ...)` in `nskk-henkan.el`**: 1 remaining site converted.
-- **`nskk-converter.el:333` string-empty-p**: Replaced `(zerop (length remaining))` with
-  `(string-empty-p remaining)` — source file consistency.
-
-- **`string-match-p` for pure boolean matches**: Replaced `(should
-  (string-match ...))` with `(should (string-match-p ...))` in 7 test
-  locations across `nskk-program-dictionary-test.el`, `nskk-henkan-test.el`,
-  and `nskk-okurigana-e2e-test.el` -- avoids clobbering global match data.
-- **`string-empty-p` consistency**: Replaced `(zerop (length ...))` with
-  `string-empty-p` in `nskk-trie.el` (3 sites) and `nskk-converter.el` (2
-  sites); replaced `(> (length str) 0)` with `(not (string-empty-p str))`
-  across 25+ test locations in unit, integration, and E2E test files; replaced
-  list `(> (length list) 0)` guards with bare truthiness checks where
-  appropriate; added `(require 'subr-x)` to both source files.
-- **Hankaku region test strengthened**: Replaced weak `(> (length
-  (buffer-string)) 0)` assertion in `nskk-hankaku-katakana-region` test with
-  exact half-width katakana string check; added 2 additional coverage cases
-  (full aiueo row, ASCII passthrough).
-- **Numeric conversion unit tests**: Added 53 unit tests covering all 8
-  `nskk--numeric-*` functions in `nskk-henkan.el` including type dispatch
-  (#0-#4, unknown), leading-ichi asymmetry in place-value kanji, and
-  multi-pattern template replacement; unit suite 3834 -> 3887.
-- **`nskk-show-mode` unit tests**: Added 15 unit tests for `nskk-show-mode.el`
-  covering `nskk--show-mode-display-inline` overlay/timer lifecycle, exact
-  indicator string content for all 5 modes (hiragana/katakana/ascii/
-  jisx0208-latin/abbrev), `nskk-show-mode-display` deduplication and
-  re-display logic; total suite 3887 -> 5276.
-- **`(should (not (null x)))` simplification**: Simplified double-negation
-  assertions `(should (not (null ...)))` to `(should ...)` in 4 locations
-  across integration test files.
-- **`pcase` refactoring**: Replaced `cond`/`if`-chain dispatches on string/symbol
-  with `pcase` across `nskk-converter.el`, `nskk-prolog.el`, `nskk-context.el`,
-  `nskk-state.el`, `nskk-henkan.el`, `nskk-input.el`, and `nskk-keymap.el`.
-- **Positive-first condition style**: Refactored `(if (not cond) (fail) body)`
-  to `(if cond body (fail))` in `nskk-kana.el` (2 sites), `nskk-server.el`
-  (2 sites), `nskk-keymap.el` (1 site), and `nskk-input.el` (1 site).
-- **`string-empty-p` over `(> (length str) 0)`**: Replaced all length-zero
-  checks with `string-empty-p` in source files; added `(require 'subr-x)` to
-  `nskk-search.el` and `nskk-state.el`.
-- **Explicit `(require 'cl-lib)`**: Added explicit cl-lib requires to
-  `nskk-context.el`, `nskk-henkan.el`, `nskk-isearch.el`, `nskk-kana.el`;
-  removed spurious cl-lib from `nskk-annotation.el`.
-- **`defsubst` for hot path**: Promoted `nskk--conversion-start-active-p` to
-  `defsubst` for inlining in the input dispatch hot path.
-- **`let*`/`let` cleanup**: Collapsed unnecessary `let*` to `let` and removed
-  unused bindings across source and test files.
-- **Zero byte-compile warnings**: All source and test files compile clean.
-- **`:package-version` completeness**: All `defcustom`/`defface` entries carry
+- Added explicit `subr-x` requires to `nskk-henkan.el`, `nskk-trie.el`,
+  `nskk-converter.el`, `nskk-search.el`, and `nskk-state.el`.
+- Added explicit `cl-lib` requires to `nskk-context.el`, `nskk-henkan.el`,
+  `nskk-isearch.el`, and `nskk-kana.el`; removed the unused require from
+  `nskk-annotation.el`.
+- All `defcustom`/`defface` entries carry
   `:package-version '(nskk . "0.1.0")`.
 
 [0.5.0]: https://github.com/takeokunn/nskk.el/compare/v0.4.0...v0.5.0

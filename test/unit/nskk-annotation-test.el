@@ -415,7 +415,7 @@
         (should (equal-including-properties annotation annotation-copy))
         (should (eq (get-text-property 0 'nskk-no-learn candidate) t))
         (should (eq (get-text-property 0 'nskk-no-learn annotation) t)))))
-(ert-deftest nskk-annotation-toggle-retains-echo-ownership ()
+(nskk-test-case nskk-annotation-toggle-retains-echo-ownership
   (with-temp-buffer
     (let ((nskk--annotation-visible t)
           (nskk--annotation-current "note")
@@ -429,7 +429,7 @@
       (should-not nskk--annotation-displayed)
       (should-not nskk--annotation-current))))
 
-(ert-deftest nskk-annotation-clears-before-candidate-list-hooks ()
+(nskk-test-case nskk-annotation-clears-before-candidate-list-hooks
   (require 'nskk-henkan)
   (with-temp-buffer
     (let ((nskk--annotation-current "note")
@@ -442,7 +442,7 @@
       (nskk--run-candidate-show-hooks-once '("候補") 0)
       (should nskk--henkan-candidate-list-active))))
 
-(ert-deftest nskk-annotation-context-preserves-equal-candidate-identities ()
+(nskk-test-case nskk-annotation-context-preserves-equal-candidate-identities
   (let* ((first (copy-sequence "12個"))
          (second (copy-sequence "12個"))
          (nskk-current-state (nskk-state-create)))
@@ -453,7 +453,7 @@
                            (list second first))
                    '(("#こ" . "12個") ("#こ" . "#0個"))))))
 
-(ert-deftest nskk-annotation-list-suffix-is-pure-and-sanitized ()
+(nskk-test-case nskk-annotation-list-suffix-is-pure-and-sanitized
   (let* ((nskk-current-state (nskk-state-create))
          (nskk-show-annotation t)
          (nskk--annotation-visible t)
@@ -479,7 +479,7 @@
       (should nskk--annotation-displayed)
       (should (equal-including-properties note original)))))
 
-(ert-deftest nskk-annotation-list-suffix-honors-both-display-switches ()
+(nskk-test-case nskk-annotation-list-suffix-honors-both-display-switches
   (let ((nskk-current-state (nskk-state-create)))
     (nskk-state-put-metadata nskk-current-state 'henkan-reading "か")
     (cl-letf (((symbol-function 'nskk-annotation-lookup)
@@ -489,7 +489,7 @@
       (let ((nskk-show-annotation t) (nskk--annotation-visible nil))
         (should-not (nskk--annotation-candidate-list-suffix "蚊"))))))
 
-(ert-deftest nskk-annotation-lookup-initializes-preloaded-source-facts ()
+(nskk-test-case nskk-annotation-lookup-initializes-preloaded-source-facts
   (nskk-prolog-test-with-isolated-db
     (let ((nskk--annotation-initialized nil)
           (nskk-show-annotation nil))
@@ -497,7 +497,7 @@
       (should (equal (nskk-annotation-lookup "か" "蚊") "source"))
       (should nskk--annotation-initialized))))
 
-(ert-deftest nskk-annotation-expanded-raw-eq-identity ()
+(nskk-test-case nskk-annotation-expanded-raw-eq-identity
   (nskk-prolog-test-with-isolated-db
     (let* ((nskk-current-state (nskk-state-create))
            (nskk-show-annotation t)

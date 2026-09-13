@@ -2093,7 +2093,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
        (should (eq (cdr before) (cdr after))))
      expected actual)))
 
-(ert-deftest nskk-prolog-set-index-publish-fault-restores-exact-key-state ()
+(nskk-test-case nskk-prolog-set-index-publish-fault-restores-exact-key-state
   (dolist (fault-type '(error quit))
     (nskk-prolog-test-with-isolated-db
      (let ((nskk--prolog-index-bucket-tail-cache
@@ -2145,7 +2145,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
          (should (eq caught fault-type))
          (nskk-test--prolog-should-match-key-state key tables expected))))))
 
-(ert-deftest nskk-prolog-replace-no-match-appends-with-canonical-tails ()
+(nskk-test-case nskk-prolog-replace-no-match-appends-with-canonical-tails
   (dolist (index-type (quote (:list :hash)))
     (nskk-prolog-test-with-isolated-db
      (let ((nskk--prolog-index-bucket-tail-cache
@@ -2346,7 +2346,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
                 (eq entry
                     (gethash key nskk--prolog-index-bucket-tail-cache)))
                (should (eq cache-info (gethash "a" (aref entry 2))))))))))))
-(ert-deftest nskk-prolog-replace-helper-fault-restores-exact-object-graph ()
+(nskk-test-case nskk-prolog-replace-helper-fault-restores-exact-object-graph
   (dolist (fault-type '(error quit))
     (nskk-prolog-test-with-isolated-db
      (let ((nskk--prolog-index-bucket-tail-cache
@@ -2513,7 +2513,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
 (defvar nskk-test--prolog-nonnumeric-global nil
   "Non-numeric global used to audit arithmetic query isolation.")
 
-(ert-deftest nskk-prolog-assert-fault-restores-exact-object-graph ()
+(nskk-test-case nskk-prolog-assert-fault-restores-exact-object-graph
   (dolist (fault-type '(error quit))
     (nskk-prolog-test-with-isolated-db
       (let ((nskk--prolog-index-bucket-tail-cache
@@ -2575,7 +2575,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
                   '(((assert-fault "a" old))
                     ((assert-fault "a" after))))))))))
 
-(ert-deftest nskk-prolog-retract-fault-restores-exact-object-graph ()
+(nskk-test-case nskk-prolog-retract-fault-restores-exact-object-graph
   (dolist (fault-type '(error quit))
     (nskk-prolog-test-with-isolated-db
       (let ((nskk--prolog-index-bucket-tail-cache
@@ -2637,7 +2637,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
                     ((retract-fault "a" other))
                     ((retract-fault "a" after))))))))))
 
-(ert-deftest nskk-prolog-retract-all-fault-restores-exact-key-state ()
+(nskk-test-case nskk-prolog-retract-all-fault-restores-exact-key-state
   (dolist (fault-type '(error quit))
     (nskk-prolog-test-with-isolated-db
       (let ((nskk--prolog-index-bucket-tail-cache
@@ -2696,7 +2696,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
                   '(((retract-all-fault "a" old))
                     ((retract-all-fault "a" after))))))))))
 
-(ert-deftest nskk-prolog-replace-callback-blocks-same-key-mutations ()
+(nskk-test-case nskk-prolog-replace-callback-blocks-same-key-mutations
   (dolist (operation '(assert retract retract-all set-index trie-bulk clear))
     (nskk-prolog-test-with-isolated-db
       (let ((nskk--prolog-index-bucket-tail-cache
@@ -2752,7 +2752,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
                   '(((callback-guard "a" old))
                     ((callback-guard "a" other))))))))))
 
-(ert-deftest nskk-prolog-replace-callback-allows-read-and-different-key ()
+(nskk-test-case nskk-prolog-replace-callback-allows-read-and-different-key
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-clear-database)
     (nskk-prolog-set-index 'callback-main 2 :hash)
@@ -2774,7 +2774,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
       (should
        (nskk-prolog-query-one '(callback-other "b" nested))))))
 
-(ert-deftest nskk-prolog-hot-indexed-assert-does-not-scan-tail ()
+(nskk-test-case nskk-prolog-hot-indexed-assert-does-not-scan-tail
 (nskk-prolog-test-with-isolated-db
   (let ((nskk--prolog-index-bucket-tail-cache
          (make-hash-table :test 'equal)))
@@ -2795,7 +2795,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
             '(((hot-assert "a" first))
               ((hot-assert "a" second))))))))
 
-(ert-deftest nskk-prolog-isolation-keeps-clause-graphs-independent ()
+(nskk-test-case nskk-prolog-isolation-keeps-clause-graphs-independent
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-clear-database)
       (nskk-prolog-set-index 'isolation-hash 2 :hash)
@@ -2867,7 +2867,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
                      "trie"
                      (original . trie-tail)))))))))
 
-  (ert-deftest nskk-prolog-isolation-does-not-capture-body-bindings ()
+  (nskk-test-case nskk-prolog-isolation-does-not-capture-body-bindings
     (let* ((marker (list 'body-marker))
            (saved-stores marker)
            (saved-flags marker)
@@ -2901,7 +2901,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
                    store-entry flag-entry))
           (should (eq binding marker))))))
 
-  (ert-deftest nskk-prolog-isolation-restores-on-all-exits ()
+  (nskk-test-case nskk-prolog-isolation-restores-on-all-exits
     (let ((database-before nskk--prolog-database)
           (input-was-bound (boundp 'nskk--input-initialized))
           (input-before
@@ -2971,7 +2971,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
               (set 'nskk--annotation-initialized annotation-before)
             (makunbound 'nskk--annotation-initialized))))))
 
-  (ert-deftest nskk-prolog-arithmetic-rejects-nonnumeric-global-symbol ()
+  (nskk-test-case nskk-prolog-arithmetic-rejects-nonnumeric-global-symbol
     (let ((nskk-test--prolog-nonnumeric-global
            '((private . secret))))
       (should-error
@@ -2981,7 +2981,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
        (nskk--prolog-eval-arith
         'nskk-test--prolog-nonnumeric-global nil))))
 
-(ert-deftest nskk-prolog-isolation-copies-long-shared-bucket-without-recursion ()
+(nskk-test-case nskk-prolog-isolation-copies-long-shared-bucket-without-recursion
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-clear-database)
       (let* ((key (nskk-prolog-clause-key 'isolation-long 2))
@@ -3022,7 +3022,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
               (should (= 0 (hash-table-count
                             nskk--prolog-index-bucket-tail-cache)))))))))
 
-  (ert-deftest nskk-prolog-isolation-copies-text-property-value-graph ()
+  (nskk-test-case nskk-prolog-isolation-copies-text-property-value-graph
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-clear-database)
       (let* ((key (nskk-prolog-clause-key 'isolation-text 1))
@@ -3055,7 +3055,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
               (aset copied-payload 0 ?X)
               (should (= (aref payload 0) ?p))))))))
 
-  (ert-deftest nskk-prolog-isolation-snapshots-weak-hash-before-allocation ()
+  (nskk-test-case nskk-prolog-isolation-snapshots-weak-hash-before-allocation
     (let* ((source (make-hash-table :test 'eq
                                     :size 17
                                     :rehash-size 2.0
@@ -3095,7 +3095,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
         (should-not (eq copied-value value))
         (should (eq copied-key (aref copied-value 0))))))
 
-  (ert-deftest nskk-prolog-isolation-preserves-shared-trie-children ()
+  (nskk-test-case nskk-prolog-isolation-preserves-shared-trie-children
     (let* ((children (make-hash-table :test 'eq
                                       :size 13
                                       :rehash-size 2.0
@@ -3123,7 +3123,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
         (should (= (hash-table-size children)
                    (hash-table-size copied-children))))))
 
-  (ert-deftest nskk-prolog-isolation-watcher-cleanup-continues-and-resignals ()
+  (nskk-test-case nskk-prolog-isolation-watcher-cleanup-continues-and-resignals
     (nskk-prolog-test-with-isolated-db
       (let* ((database-before nskk--prolog-database)
              (counter-before -972837465)
@@ -3162,7 +3162,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
                          expected-watchers))))
           (remove-variable-watcher 'nskk--prolog-database watcher)))))
 
-  (ert-deftest nskk-prolog-copy-term-preserves-supported-graph-topology ()
+  (nskk-test-case nskk-prolog-copy-term-preserves-supported-graph-topology
   (let* ((shared (list 'shared))
          (equal-left (list 'same))
          (equal-right (list 'same))
@@ -3208,7 +3208,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
       (should (eq copied-function closure))
       (should (eq (nskk-prolog-copy-term 'atom) 'atom))
       (should (= (nskk-prolog-copy-term 42) 42)))))
-(ert-deftest nskk-prolog-copy-term-preserves-char-table-graph ()
+(nskk-test-case nskk-prolog-copy-term-preserves-char-table-graph
   (let* ((purpose (make-symbol "nskk-prolog-copy-char-table"))
          parent
          table
@@ -3266,7 +3266,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
       (setcar copied-shared 'copy-mutated)
       (should (eq (car shared) 'source-mutated)))))
 
-(ert-deftest nskk-prolog-copy-term-detaches-propertyless-shared-strings ()
+(nskk-test-case nskk-prolog-copy-term-detaches-propertyless-shared-strings
   (dolist (text '("plain" "aかな"))
     (let* ((source (copy-sequence text))
            (copy (nskk-prolog-copy-term (vector source source)))
@@ -3277,7 +3277,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
       (aset copied-string 0 ?z)
       (should (equal source text)))))
 
-(ert-deftest nskk-prolog-copy-term-preserves-nil-valued-text-properties ()
+(nskk-test-case nskk-prolog-copy-term-preserves-nil-valued-text-properties
   (let ((source (copy-sequence "ab")))
     (set-text-properties 1 2 '(nskk-test-nil nil) source)
     (should (plist-member (text-properties-at 1 source) 'nskk-test-nil))
@@ -3287,7 +3287,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
       (should (plist-member (text-properties-at 1 copy) 'nskk-test-nil))
       (should-not (get-text-property 1 'nskk-test-nil copy)))))
 
-(ert-deftest nskk-prolog-copy-term-detaches-later-text-property-spans ()
+(nskk-test-case nskk-prolog-copy-term-detaches-later-text-property-spans
   (let* ((source (copy-sequence "abcd"))
          (metadata (list 'metadata)))
     (add-text-properties 2 4 (list 'nskk-test-metadata metadata) source)
@@ -3304,7 +3304,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
       (setcar copied-metadata 'changed)
       (should (eq (car metadata) 'metadata)))))
 
-(ert-deftest nskk-prolog-copy-term-detaches-text-properties-and-deep-graphs ()
+(nskk-test-case nskk-prolog-copy-term-detaches-text-properties-and-deep-graphs
   (let* ((metadata (list 'metadata))
          (string (copy-sequence "ab"))
          (root (vector string metadata)))
@@ -3339,7 +3339,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
       (should (= count 210001))
       (should-not cursor))))
 
-(ert-deftest nskk-prolog-assert-copies-once-and-publishes-one-canonical-object ()
+(nskk-test-case nskk-prolog-assert-copies-once-and-publishes-one-canonical-object
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-clear-database)
     (nskk-prolog-set-index 'copy-assert 2 :hash)
@@ -3369,7 +3369,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
       (should (eq (caar database-clause) 'copy-assert))
       (should (equal (nth 2 (car database-clause)) '(original))))))
 
-(ert-deftest nskk-prolog-assert-copy-failure-is-atomic-and-resignals ()
+(nskk-test-case nskk-prolog-assert-copy-failure-is-atomic-and-resignals
   (dolist (expected '((error "copy-error") (quit copy-quit)))
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-clear-database)
@@ -3407,7 +3407,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
         (should-not (gethash "key" index))
         (should-not nskk--prolog-active-mutation-keys)))))
 
-(ert-deftest nskk-prolog-copy-term-preserves-hash-graph-and-metadata ()
+(nskk-test-case nskk-prolog-copy-term-preserves-hash-graph-and-metadata
   (let* ((shared (list 'shared))
          (equal-left (list 'same))
          (equal-right (list 'same))
@@ -3477,7 +3477,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
       (should (eq (car shared) 'source-mutated))
       (should-not (gethash 'copy-only inner)))))
 
-(ert-deftest nskk-prolog-copy-term-handles-deep-mixed-hash-graph-iteratively ()
+(nskk-test-case nskk-prolog-copy-term-handles-deep-mixed-hash-graph-iteratively
   (let (deep)
     (dotimes (_ 210001)
       (push nil deep))
@@ -3510,7 +3510,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
         (should (= count 210001))
         (should-not cursor)))))
 
-(ert-deftest nskk-prolog-assert-hash-payload-is-canonical-and-query-is-detached ()
+(nskk-test-case nskk-prolog-assert-hash-payload-is-canonical-and-query-is-detached
   (dolist (spec '((copy-hash :hash "hash-key")
                   (copy-trie :trie "trie-key")))
     (nskk-prolog-test-with-isolated-db
@@ -3568,7 +3568,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
                           '(original)))
            (should-not (gethash 'query-only canonical-table))))))))
 
-(ert-deftest nskk-prolog-assert-copy-puthash-fault-is-exact-and-retryable ()
+(nskk-test-case nskk-prolog-assert-copy-puthash-fault-is-exact-and-retryable
   (dolist (fault-type '(error quit))
     (dolist (timing '(before after))
       (nskk-prolog-test-with-isolated-db
@@ -3797,7 +3797,7 @@ tests about what gets asserted, not about which form the macro wraps it in."
         (should (equal (nskk-prolog-presentation-actions 'cleanup)
                        '(survivor-cb)))))))
 
-(ert-deftest nskk-prolog-copy-term-preserves-self-referential-vector ()
+(nskk-test-case nskk-prolog-copy-term-preserves-self-referential-vector
   "A vector whose own slot aliases itself keeps that self-reference.
 Complements `nskk-prolog-copy-term-preserves-supported-graph-topology',
 which exercises a self-referential cons but not a self-referential vector."
@@ -3816,7 +3816,7 @@ which exercises a self-referential cons but not a self-referential vector."
       (should (eq (aref copy 3) copy))
       (should (eq (get-text-property 0 'backlink copied-backlink) copy)))))
 
-(ert-deftest nskk-prolog-copy-term-produces-mutually-independent-copies-across-calls ()
+(nskk-test-case nskk-prolog-copy-term-produces-mutually-independent-copies-across-calls
   "Two separate calls copying the same source never share structure with
 each other, only with the source they were each copied from."
   (let* ((key (list 'key))

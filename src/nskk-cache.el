@@ -829,9 +829,6 @@ Non-string keys are retained.  Returns a list of the invalidated keys.
 PATTERN must be a valid Emacs regexp; a malformed pattern will signal
 `invalid-regexp'.  This is an internal API; PATTERN should always be a
 literal regexp string from source code, never from user input."
-  ;; Collect matching keys first to avoid mutating the hash table during
-  ;; iteration, which is an anti-pattern even though Emacs technically
-  ;; permits remhash inside maphash.
   (let ((keys-to-delete nil)
         (hash-table (nskk-cache--base-hash cache)))
     (maphash (lambda (key _value)

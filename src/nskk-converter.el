@@ -57,8 +57,6 @@
   :package-version '(nskk . "0.1.0")
   :group 'nskk-converter)
 
-;; Romaji conversion table
-;; Maps romaji sequences to their kana equivalents (as strings for multi-byte)
 (defvar nskk-mode-map)
 (defvar nskk--romaji-table
   (make-hash-table :test 'equal :size 200)
@@ -345,10 +343,70 @@ owned predicates rather than on the dictionary size.")
 ROMAJI-TABLE and DATABASE are the live objects at publication time, so a
 rebinding of either store (tests, isolated databases) invalidates the record.")
 
+(defun nskk--converter-validate-user-rules (rules)
+  "Reject RULES unless its keys are nonempty strings and values are strings."
+  (unless (and (proper-list-p rules)
+               (cl-every (lambda (rule)
+                           (and (consp rule)
+                                (stringp (car rule))
+                                (not (string-empty-p (car rule)))
+                                (stringp (cdr rule))))
+                         rules))
+    (error "User rules require nonempty string keys and string values")))
+
+(defvar nskk-converter-user-rules)
+
+(defun nskk--converter-set-user-rules (symbol value)
+  "Publish VALUE before updating the default value of SYMBOL."
+  (nskk--converter-validate-user-rules value)
+  (let ((record nskk--converter-published-style)
+        (nskk-converter-user-rules value))
+    (when (and record
+               (eq (nth 2 record) nskk--romaji-table)
+               (eq (nth 3 record) (nskk-prolog-database)))
+      (nskk-converter-reload-style (car record))))
+  (set-default symbol value))
+
+(defcustom nskk-converter-user-rules nil
+  "Persistent romaji rules shared by every conversion style.
+Each entry is (ROMAJI . KANA), with a nonempty ROMAJI string and a KANA
+string.  The first entry for a romaji wins.  These rules override style
+defaults and `nskk-azik-conversion-table'.
+Customize and `setopt' update the active style transactionally.  After
+`setq', call `nskk-converter-reload-style' with the desired style.
+Unlike `nskk-converter-add-rule', these rules survive style changes."
+  :type '(alist :key-type string :value-type string)
+  :group 'nskk-converter
+  :initialize #'custom-initialize-default
+  :set #'nskk--converter-set-user-rules)
+
+(defun nskk--converter-apply-user-rules ()
+  "Apply persistent rules to the staged style without replacing generic heads."
+  (nskk--converter-validate-user-rules nskk-converter-user-rules)
+  (when nskk-converter-user-rules
+    (let* ((rules (nskk-prolog-copy-term nskk-converter-user-rules))
+           (clauses
+            (cl-remove-if
+             (lambda (clause)
+               (let ((romaji (cadar clause)))
+                 (and (stringp romaji) (assoc romaji rules))))
+             (gethash (nskk-prolog-clause-key 'romaji-to-kana 2)
+                      (nskk-prolog-database))))
+           (seen (make-hash-table :test 'equal)))
+      (nskk-prolog-retract-all 'romaji-to-kana 2)
+      (dolist (rule rules)
+        (unless (gethash (car rule) seen)
+          (puthash (car rule) t seen)
+          (nskk-prolog-assert `((romaji-to-kana ,(car rule) ,(cdr rule))))
+          (puthash (car rule) (cdr rule) nskk--romaji-table)))
+      (dolist (clause clauses)
+        (nskk-prolog-assert clause)))))
+
 (defun nskk--converter-style-inputs (style)
-  "Return a detached copy of STYLE's registered initializer inputs, or nil."
+  "Return a detached copy of STYLE and common rule inputs."
   (let ((inputs-fn (alist-get style nskk--style-inputs-registry)))
-    (and inputs-fn (nskk-prolog-copy-term (funcall inputs-fn)))))
+    (nskk-prolog-copy-term
+     (list nskk-converter-user-rules (and inputs-fn (funcall inputs-fn))))))
 
 (defun nskk--converter-style-published-p (style)
   "Return non-nil when STYLE is the live published style with unchanged inputs."
@@ -598,6 +656,7 @@ detached `cl-progv' scope.  The Prolog store is staged separately by
           (nskk-prolog-retract-all 'romaji-to-kana 2)
           (nskk-prolog-set-index 'romaji-to-kana 2 :trie)
           (funcall init-fn)
+          (nskk--converter-apply-user-rules)
           (nskk--converter-populate-incomplete-markers))
         (let ((staged-mode-map-bound-p (boundp 'nskk-mode-map))
               (publish-keys

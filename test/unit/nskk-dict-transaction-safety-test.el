@@ -6,6 +6,7 @@
 
 ;;; Code:
 (require 'ert)
+(require 'nskk-test-framework)
 (require 'cl-lib)
 (require 'nskk-dict-transaction)
 
@@ -129,21 +130,21 @@ that can reject the path is the check itself."
         (inhibit-file-name-operation operation))
     (apply operation arguments)))
 
-(ert-deftest nskk-dict-transaction-safety-controller-accepts-owner-controlled-modes ()
+(nskk-test-case nskk-dict-transaction-safety-controller-accepts-owner-controlled-modes
   (nskk-dict-transaction-safety--with-root root
     (dolist (modes (list #o700 #o755 #o750 #o701 #o500))
       (let ((directory (nskk-dict-transaction-safety--subdirectory
                         root (format "ctl-%o" modes) modes)))
         (should (nskk-dict-transaction--safe-directory-controller-p directory))))))
 
-(ert-deftest nskk-dict-transaction-safety-controller-rejects-shared-write-without-sticky ()
+(nskk-test-case nskk-dict-transaction-safety-controller-rejects-shared-write-without-sticky
   (nskk-dict-transaction-safety--with-root root
     (dolist (modes (list #o775 #o770 #o707 #o702 #o720 #o777))
       (let ((directory (nskk-dict-transaction-safety--subdirectory
                         root (format "open-%o" modes) modes)))
         (should-not (nskk-dict-transaction--safe-directory-controller-p directory))))))
 
-(ert-deftest nskk-dict-transaction-safety-controller-accepts-shared-write-with-sticky ()
+(nskk-test-case nskk-dict-transaction-safety-controller-accepts-shared-write-with-sticky
   ;; #o1000 is the whole reason a world-writable directory such as /tmp is
   ;; usable at all, so the sticky alternative is the clause that must survive.
   (nskk-dict-transaction-safety--with-root root
@@ -153,7 +154,7 @@ that can reject the path is the check itself."
         (should (nskk-dict-transaction--safe-directory-controller-p directory))
         (should-not (zerop (logand (file-modes directory) #o022)))))))
 
-(ert-deftest nskk-dict-transaction-safety-controller-ignores-ancestry ()
+(nskk-test-case nskk-dict-transaction-safety-controller-ignores-ancestry
   (nskk-dict-transaction-safety--with-root root
     (let ((directory (nskk-dict-transaction-safety--subdirectory root "child" #o700)))
       (set-file-modes root #o775)
@@ -161,7 +162,7 @@ that can reject the path is the check itself."
         (ert-skip (format "%s does not preserve mode #o775" root)))
       (should (nskk-dict-transaction--safe-directory-controller-p directory)))))
 
-(ert-deftest nskk-dict-transaction-safety-ancestry-clause-rejects-shared-writable-parent ()
+(nskk-test-case nskk-dict-transaction-safety-ancestry-clause-rejects-shared-writable-parent
   (nskk-dict-transaction-safety--with-root root
     (let ((directory (nskk-dict-transaction-safety--subdirectory root "child" #o700))
           (source (file-attributes root 'integer)))
@@ -176,7 +177,7 @@ that can reject the path is the check itself."
       (should-not (nskk-dict-transaction--safe-source-snapshot-parent-p directory source))
       (should-not (nskk-dict-transaction--private-snapshot-directory-p directory)))))
 
-(ert-deftest nskk-dict-transaction-safety-snapshot-base-mode-matrix ()
+(nskk-test-case nskk-dict-transaction-safety-snapshot-base-mode-matrix
   (nskk-dict-transaction-safety--with-root root
     (dolist (row '((#o700 t) (#o755 t) (#o750 t) (#o701 t)
                    (#o775 nil) (#o770 nil) (#o707 nil)
@@ -186,21 +187,21 @@ that can reject the path is the check itself."
         (should (eq (and (nskk-dict-transaction--safe-snapshot-base-p directory) t)
                     (cadr row)))))))
 
-(ert-deftest nskk-dict-transaction-safety-snapshot-base-requires-writability ()
+(nskk-test-case nskk-dict-transaction-safety-snapshot-base-requires-writability
   (nskk-dict-transaction-safety--with-root root
     (let ((directory (nskk-dict-transaction-safety--subdirectory root "ro" #o500)))
       (should (nskk-dict-transaction--safe-directory-controller-p directory))
       (should-not (file-writable-p directory))
       (should-not (nskk-dict-transaction--safe-snapshot-base-p directory)))))
 
-(ert-deftest nskk-dict-transaction-safety-snapshot-base-accepts-symlink ()
+(nskk-test-case nskk-dict-transaction-safety-snapshot-base-accepts-symlink
   (nskk-dict-transaction-safety--with-root root
     (let* ((target (nskk-dict-transaction-safety--subdirectory root "target" #o700))
            (link (nskk-dict-transaction-safety--symlink root "link" target)))
       (should (file-symlink-p link))
       (should (nskk-dict-transaction--safe-snapshot-base-p link)))))
 
-(ert-deftest nskk-dict-transaction-safety-source-snapshot-parent-mode-matrix ()
+(nskk-test-case nskk-dict-transaction-safety-source-snapshot-parent-mode-matrix
   (nskk-dict-transaction-safety--with-root root
     (let ((source (file-attributes root 'integer)))
       (dolist (row '((#o700 t) (#o755 t) (#o750 t) (#o701 t)
@@ -213,7 +214,7 @@ that can reject the path is the check itself."
                            t)
                       (cadr row))))))))
 
-(ert-deftest nskk-dict-transaction-safety-source-snapshot-parent-rejects-symlink ()
+(nskk-test-case nskk-dict-transaction-safety-source-snapshot-parent-rejects-symlink
   (nskk-dict-transaction-safety--with-root root
     (let* ((target (nskk-dict-transaction-safety--subdirectory root "target" #o700))
            (link (nskk-dict-transaction-safety--symlink root "link" target))
@@ -221,7 +222,7 @@ that can reject the path is the check itself."
       (should (nskk-dict-transaction--safe-source-snapshot-parent-p target source))
       (should-not (nskk-dict-transaction--safe-source-snapshot-parent-p link source)))))
 
-(ert-deftest nskk-dict-transaction-safety-source-snapshot-parent-requires-same-device ()
+(nskk-test-case nskk-dict-transaction-safety-source-snapshot-parent-requires-same-device
   (nskk-dict-transaction-safety--with-root root
     (let* ((directory (nskk-dict-transaction-safety--subdirectory root "parent" #o700))
            (same-device (file-attributes
@@ -236,7 +237,7 @@ that can reject the path is the check itself."
       (should (nskk-dict-transaction--safe-source-snapshot-parent-p directory same-device))
       (should-not (nskk-dict-transaction--safe-source-snapshot-parent-p directory foreign)))))
 
-(ert-deftest nskk-dict-transaction-safety-private-requires-exactly-700 ()
+(nskk-test-case nskk-dict-transaction-safety-private-requires-exactly-700
   (nskk-dict-transaction-safety--with-root root
     ;; #o1700 is accepted: the mask in `(= (logand modes #o777) #o700)' discards
     ;; the sticky bit, so a sticky private directory reads as an ordinary one.
@@ -252,14 +253,14 @@ that can reject the path is the check itself."
         (should (eq (and (nskk-dict-transaction--private-snapshot-directory-p directory) t)
                     (cadr row)))))))
 
-(ert-deftest nskk-dict-transaction-safety-private-rejects-symlink ()
+(nskk-test-case nskk-dict-transaction-safety-private-rejects-symlink
   (nskk-dict-transaction-safety--with-root root
     (let* ((target (nskk-dict-transaction-safety--subdirectory root "target" #o700))
            (link (nskk-dict-transaction-safety--symlink root "link" target)))
       (should (nskk-dict-transaction--private-snapshot-directory-p target))
       (should-not (nskk-dict-transaction--private-snapshot-directory-p link)))))
 
-(ert-deftest nskk-dict-transaction-safety-predicates-are-pairwise-distinguishable ()
+(nskk-test-case nskk-dict-transaction-safety-predicates-are-pairwise-distinguishable
   (nskk-dict-transaction-safety--with-root root
     (let* ((source (file-attributes root 'integer))
            (private (nskk-dict-transaction-safety--subdirectory root "m700" #o700))
@@ -294,7 +295,7 @@ that can reject the path is the check itself."
       ;; by substituting one predicate for another.
       (should (= 4 (length (delete-dups (copy-sequence columns))))))))
 
-(ert-deftest nskk-dict-transaction-safety-all-predicates-reject-handled-paths ()
+(nskk-test-case nskk-dict-transaction-safety-all-predicates-reject-handled-paths
   (nskk-dict-transaction-safety--with-root root
     (let* ((directory (nskk-dict-transaction-safety--subdirectory root "handled" #o700))
            (source (file-attributes root 'integer)))
@@ -313,7 +314,7 @@ that can reject the path is the check itself."
         (should-not (nskk-dict-transaction--safe-source-snapshot-parent-p directory source))
         (should-not (nskk-dict-transaction--private-snapshot-directory-p directory))))))
 
-(ert-deftest nskk-dict-transaction-safety-all-predicates-reject-regular-file ()
+(nskk-test-case nskk-dict-transaction-safety-all-predicates-reject-regular-file
   (nskk-dict-transaction-safety--with-root root
     (let ((file (nskk-dict-transaction-safety--regular-file root "plain"))
           (source (file-attributes root 'integer)))
@@ -322,7 +323,7 @@ that can reject the path is the check itself."
       (should-not (nskk-dict-transaction--safe-source-snapshot-parent-p file source))
       (should-not (nskk-dict-transaction--private-snapshot-directory-p file)))))
 
-(ert-deftest nskk-dict-transaction-safety-all-predicates-reject-missing-directory ()
+(nskk-test-case nskk-dict-transaction-safety-all-predicates-reject-missing-directory
   (nskk-dict-transaction-safety--with-root root
     (let ((missing (expand-file-name "absent" root))
           (source (file-attributes root 'integer)))
@@ -332,7 +333,7 @@ that can reject the path is the check itself."
       (should-not (nskk-dict-transaction--safe-source-snapshot-parent-p missing source))
       (should-not (nskk-dict-transaction--private-snapshot-directory-p missing)))))
 
-(ert-deftest nskk-dict-transaction-safety-acl-known-denials ()
+(nskk-test-case nskk-dict-transaction-safety-acl-known-denials
   (let ((system-type 'darwin)
         (principal "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:"))
     (dolist (entry '("deny:delete" "deny,inherited:delete"
@@ -344,7 +345,7 @@ that can reject the path is the check itself."
              (concat "!#acl 1\n" principal "deny:delete\n"
                      "user:00000000-0000-0000-0000-000000000001:::deny:write\n")))))
 
-(ert-deftest nskk-dict-transaction-safety-acl-rejects-unrecognized-text ()
+(nskk-test-case nskk-dict-transaction-safety-acl-rejects-unrecognized-text
   (let* ((system-type 'darwin)
          (principal "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:")
          (known (concat "!#acl 1\n" principal "deny:delete\n")))
@@ -362,7 +363,7 @@ that can reject the path is the check itself."
                        (replace-regexp-in-string "ABCDEFAB" "INVALID!" known))))
       (should-not (nskk-dict-transaction--non-granting-acl-p acl)))))
 
-(ert-deftest nskk-dict-transaction-safety-acl-platform-boundary ()
+(nskk-test-case nskk-dict-transaction-safety-acl-platform-boundary
   (dolist (system-type '(darwin gnu/linux windows-nt berkeley-unix))
     (should (nskk-dict-transaction--non-granting-acl-p nil))
     (unless (eq system-type 'darwin)
@@ -370,7 +371,7 @@ that can reject the path is the check itself."
        (nskk-dict-transaction--non-granting-acl-p
         "!#acl 1\ngroup:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:deny:delete\n")))))
 
-(ert-deftest nskk-dict-transaction-safety-acl-native-controls ()
+(nskk-test-case nskk-dict-transaction-safety-acl-native-controls
   (unless (eq system-type 'darwin) (ert-skip "Darwin native ACL test"))
   (nskk-dict-transaction-safety--with-root root
     (let ((plain (nskk-dict-transaction-safety--subdirectory root "plain" #o700))

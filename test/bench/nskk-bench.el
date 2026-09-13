@@ -1,4 +1,4 @@
-;;; nskk-bench.el --- NSKK comprehensive performance benchmarks -*- lexical-binding: t; -*-
+;;; nskk-bench.el --- NSKK performance benchmarks -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026 NSKK Contributors
 
@@ -13,8 +13,6 @@
 ;; (at your option) any later version.
 
 ;;; Commentary:
-
-;; NSKK comprehensive performance benchmarks.
 
 ;;; Code:
 

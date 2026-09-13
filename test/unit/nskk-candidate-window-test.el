@@ -666,7 +666,7 @@
             (should-not nskk--candidate-list-active))
         (nskk-state-set-candidate-overlay saved-candidate-overlay)))))
 
-(ert-deftest nskk-candidate-selection-rejects-position-outside-visible-page ()
+(nskk-test-case nskk-candidate-selection-rejects-position-outside-visible-page
   (let ((nskk-henkan-number-to-display-candidates 2))
     (dolist (start '(0 2))
       (let (found missing)

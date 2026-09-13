@@ -115,7 +115,7 @@
             (should (equal result-value (cdr case)))))))))
 
 
-(ert-deftest nskk-henkan-numeric-annotation-optional-module-fresh-process ()
+(nskk-test-case nskk-henkan-numeric-annotation-optional-module-fresh-process
   "Preserve raw user annotations with and without the optional module."
   (let* ((source-directory
           (file-name-directory (symbol-file 'nskk-commit-current 'defun)))

@@ -841,7 +841,7 @@
          (should-not nskk--isearch-orig-buffer)
          (should-not nskk--isearch-orig-buffer-stack))))))
 
-(ert-deftest nskk-isearch-prompt-forwards-arguments ()
+(nskk-test-case nskk-isearch-prompt-forwards-arguments
   (let ((nskk-isearch-enable nil)
         received)
     (should (equal "prompt"
@@ -850,7 +850,7 @@
                     'ellipsis 'nonincremental)))
     (should (equal received '(ellipsis nonincremental)))))
 
-(ert-deftest nskk-isearch-teardown-releases-input-buffer-and-owned-map ()
+(nskk-test-case nskk-isearch-teardown-releases-input-buffer-and-owned-map
   (nskk-isearch-test--call-with-isolated-lifecycle
    (lambda ()
      (let* ((input (generate-new-buffer " *nskk-isearch-test-input*"))
@@ -866,7 +866,7 @@
              (should (eq overriding-terminal-local-map previous)))
          (when (buffer-live-p input) (kill-buffer input)))))))
 
-(ert-deftest nskk-isearch-end-preserves-already-restored-map ()
+(nskk-test-case nskk-isearch-end-preserves-already-restored-map
   (let* ((input (generate-new-buffer " *nskk-isearch-test-input*"))
          (restored (make-sparse-keymap))
          (overriding-terminal-local-map restored)
@@ -881,7 +881,7 @@
           (should (eq overriding-terminal-local-map restored)))
       (when (buffer-live-p input) (kill-buffer input)))))
 
-(ert-deftest nskk-isearch-setup-failure-releases-partial-session ()
+(nskk-test-case nskk-isearch-setup-failure-releases-partial-session
   (require 'nskk)
   (let ((nskk--isearch-input-sessions nil)
         (nskk--isearch-orig-buffer nil)
@@ -905,7 +905,7 @@
               (should (eq previous overriding-terminal-local-map)))
           (when (buffer-live-p input) (kill-buffer input)))))))
 
-(ert-deftest nskk-isearch-origin-failure-preserves-session-state ()
+(nskk-test-case nskk-isearch-origin-failure-preserves-session-state
   (require 'nskk)
   (let* ((nskk-mode t)
          (nskk--isearch-orig-buffer (current-buffer))
@@ -921,7 +921,7 @@
     (should (equal nskk--isearch-input-sessions '(outer)))
     (should (eq overriding-terminal-local-map previous))))
 
-(ert-deftest nskk-isearch-pending-message-preserves-query ()
+(nskk-test-case nskk-isearch-pending-message-preserves-query
   (require 'nskk)
   (with-temp-buffer
     (insert "▼かな")
@@ -940,7 +940,7 @@
       (should (equal isearch-message "prefix"))
       (should (equal (buffer-string) "▼かな")))))
 
-(ert-deftest nskk-isearch-cleanup-hook-failure-restores-session ()
+(nskk-test-case nskk-isearch-cleanup-hook-failure-restores-session
   (require 'nskk)
   (dolist (phase '(setup teardown))
     (let ((nskk--isearch-input-sessions nil)
@@ -978,7 +978,7 @@
               (with-current-buffer input (setq kill-buffer-hook nil))
               (kill-buffer input))))))))
 
-(ert-deftest nskk-isearch-cleanup-retains-failed-buffer-for-public-teardown ()
+(nskk-test-case nskk-isearch-cleanup-retains-failed-buffer-for-public-teardown
   (let ((nskk--isearch-input-sessions nil)
         (nskk--isearch-pending-buffers nil)
         (nskk--isearch-orig-buffer nil)
@@ -1000,7 +1000,7 @@
           (should-not nskk--isearch-pending-buffers))
       (when (buffer-live-p input) (kill-buffer input)))))
 
-(ert-deftest nskk-isearch-cleanup-does-not-change-origin-hooks ()
+(nskk-test-case nskk-isearch-cleanup-does-not-change-origin-hooks
   (with-temp-buffer
     (let* ((origin (current-buffer))
            (hook (lambda () (error "origin hook must remain")))

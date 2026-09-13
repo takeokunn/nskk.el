@@ -223,7 +223,7 @@
                     (nskk-with-mock-dict nil (null (nskk-dict-lookup key)))
                     20)
 
-(ert-deftest nskk-dictionary-cache-fresh-process-annotation-and-order ()
+(nskk-test-case nskk-dictionary-cache-fresh-process-annotation-and-order
   (let* ((root (make-temp-file "nskk-cache-process-" t))
          (source (symbol-file 'nskk-dict-parse-line 'defun))
          (driver (expand-file-name "child.el" root))

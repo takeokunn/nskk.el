@@ -497,7 +497,7 @@
         (set-frame-parameter frame nskk--saved-cursor-color-parameter nil)
         (set-frame-parameter frame nskk--last-cursor-color-parameter nil)))))
 
-(ert-deftest nskk-e2e-command-loop-undo-kakutei ()
+(nskk-test-case nskk-e2e-command-loop-undo-kakutei
   (let ((read-minibuffer (symbol-function 'read-from-minibuffer)))
     (dolist (invocation '("<f8>" "M-x nskk-undo-kakutei RET"))
       (nskk-e2e-with-buffer 'hiragana nil
@@ -512,7 +512,7 @@
             (should (= (nskk-state-current-index nskk-current-state) 1))
             (should-error (nskk-undo-kakutei) :type 'user-error)))))))
 
-(ert-deftest nskk-e2e-command-loop-delayed-undo-kakutei ()
+(nskk-test-case nskk-e2e-command-loop-delayed-undo-kakutei
   (dolist (case '(("C-b" "▼感じ") ("a" "▼感じあ")
                   ("C-a a" "あ▼感じ")
                   ("C-b C-d" "▼感じ") ("C-b DEL" "▼感じ")))
@@ -525,7 +525,7 @@
         (should (equal (buffer-string) (cadr case)))
         (should (eq (nskk-state-henkan-phase nskk-current-state) 'active))))))
 
-(ert-deftest nskk-e2e-command-loop-normal-undo-preedit ()
+(nskk-test-case nskk-e2e-command-loop-normal-undo-preedit
   (nskk-e2e-with-buffer 'hiragana nil
     (buffer-enable-undo)
     (save-window-excursion
@@ -542,7 +542,7 @@
                        '(("▽かんじ" on) ("▽かん" on) ("▽か" on)
                          ("▽" on) ("" nil))))))))
 
-(ert-deftest nskk-e2e-command-loop-normal-undo-commit ()
+(nskk-test-case nskk-e2e-command-loop-normal-undo-commit
   (dolist (case '(("C-j" ("" nil))
                   ("RET" ("漢字" nil) ("▼漢字" nil) ("" nil))))
     (nskk-e2e-with-buffer 'hiragana nil
@@ -561,7 +561,7 @@
                         (mapconcat (lambda (_) " C-/") (cdr case) ""))))
           (should (equal (nreverse states) (cdr case))))))))
 
-(ert-deftest nskk-e2e-command-loop-normal-undo-after-idle ()
+(nskk-test-case nskk-e2e-command-loop-normal-undo-after-idle
   (nskk-e2e-with-buffer 'hiragana nil
     (buffer-enable-undo)
     (save-window-excursion
@@ -586,7 +586,7 @@
         (execute-kbd-macro (kbd "Kanji SPC C-j C-/ C-/"))
         (should (equal (nreverse states) '(("▼漢字" nil) ("" nil))))))))
 
-(ert-deftest nskk-e2e-command-loop-normal-undo-redo ()
+(nskk-test-case nskk-e2e-command-loop-normal-undo-redo
   (nskk-e2e-with-buffer 'hiragana nil
     (buffer-enable-undo)
     (save-window-excursion
@@ -602,7 +602,7 @@
         (execute-kbd-macro (kbd "Kanji SPC C-j C-/ <f9>"))
         (should (equal (nreverse states) '(("" nil) ("漢字" nil))))))))
 
-(ert-deftest nskk-e2e-command-loop-normal-undo-pending-prefix ()
+(nskk-test-case nskk-e2e-command-loop-normal-undo-pending-prefix
   (nskk-e2e-with-buffer 'hiragana nil
     (buffer-enable-undo)
     (save-window-excursion
@@ -612,7 +612,7 @@
       (should (equal (nskk-state-romaji-buffer) ""))
       (should (eq (nskk-state-henkan-phase nskk-current-state) 'on)))))
 
-(ert-deftest nskk-e2e-command-loop-special-undo-last-candidate ()
+(nskk-test-case nskk-e2e-command-loop-special-undo-last-candidate
   (nskk-e2e-with-buffer 'hiragana nil
     (buffer-enable-undo)
     (save-window-excursion
@@ -624,7 +624,7 @@
                      '("幹事" "漢字" "感じ")))
       (should (= (nskk-state-current-index nskk-current-state) 1)))))
 
-(ert-deftest nskk-e2e-command-loop-ddskk-undo-boundaries ()
+(nskk-test-case nskk-e2e-command-loop-ddskk-undo-boundaries
   (dolist (case (append
                 '(("Kanji SPC C-j C-/" "")
                   ("Kanji SPC SPC C-j C-/" "▼感じ")
@@ -646,7 +646,7 @@
           (should (equal (buffer-string) (cadr case)))
           (should-not (nskk-state-henkan-phase nskk-current-state)))))))
 
-(ert-deftest nskk-e2e-command-loop-ddskk-kakutei-modes ()
+(nskk-test-case nskk-e2e-command-loop-ddskk-kakutei-modes
   (dolist (case '(("C-j" "" hiragana)
                   ("a C-j" "あ" hiragana)
                   ("q C-j" "" katakana)
@@ -664,7 +664,7 @@
           (should (equal (nskk-state-romaji-buffer) ""))
           (should-not (nskk-state-henkan-phase nskk-current-state)))))))
 
-(ert-deftest nskk-e2e-command-loop-candidate-navigation-keeps-conversion ()
+(nskk-test-case nskk-e2e-command-loop-candidate-navigation-keeps-conversion
   (dolist (case '(("Kanji SPC SPC" "感じ")
                   ("Kanji SPC SPC SPC" "幹事")
                   ("KaKu SPC" "掛")))
@@ -677,7 +677,7 @@
           (nskk-e2e-assert-converting)
           (nskk-e2e-assert-overlay-shows (cadr case)))))))
 
-(ert-deftest nskk-e2e-isearch-command-loop ()
+(nskk-test-case nskk-e2e-isearch-command-loop
   (dolist (case '((ascii "C-s k a n a RET" "kana" 11)
                   (katakana-半角 "C-s k a n a RET" "kana" 11)
                   (katakana-半角 "C-s C-j k a n a RET" "かな" 14)
@@ -722,7 +722,7 @@
                     (when isearch-mode (isearch-done))))))
           (nskk-isearch-teardown))))))
 
-(ert-deftest nskk-e2e-isearch-command-loop-direction ()
+(nskk-test-case nskk-e2e-isearch-command-loop-direction
   (dolist (mode-case '((hiragana "か" 30 17 18)
                        (ascii "ka" 27 14 16)
                        (katakana "カ" 32 19 20)
@@ -759,7 +759,7 @@
                       (when isearch-mode (isearch-done))))))
             (nskk-isearch-teardown)))))))
 
-(ert-deftest nskk-e2e-candidate-list-command-loop-routing ()
+(nskk-test-case nskk-e2e-candidate-list-command-loop-routing
   (let ((show (symbol-function 'nskk-candidate-show-list))
         (hide (symbol-function 'nskk-candidate-hide-list))
         (nskk-henkan-show-candidates-nth 2)
@@ -792,7 +792,7 @@
           (should (eq (nskk-state-get-mode) 'hiragana))
           (should-not (nskk-henkan-candidate-list-active)))))))
 
-(ert-deftest nskk-e2e-candidate-list-command-loop-configured-keys ()
+(nskk-test-case nskk-e2e-candidate-list-command-loop-configured-keys
   (let ((show (symbol-function 'nskk-candidate-show-list))
         (hide (symbol-function 'nskk-candidate-hide-list))
         (nskk-henkan-show-candidates-nth 2)

@@ -1364,7 +1364,7 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
           (should (eq (nskk-dict-load-user-dictionary) 'user)))
       (delete-file nskk-dict-user-dictionary-file))))
 
-(ert-deftest nskk-e2e-plain-user-suppresses-global-annotation ()
+(nskk-test-case nskk-e2e-plain-user-suppresses-global-annotation
   (nskk-e2e-with-buffer 'hiragana '(("#こ" . ("#0個")))
     (let ((nskk-show-annotation t))
       (nskk-annotation-initialize)
@@ -1449,15 +1449,16 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
         ("かk" . ("書" "描" "欠"))
         ("#こ" . ("先頭" "#0個" "12個" "#0コ")))
     (let ((nskk-show-annotation enabled)
+          (nskk-henkan-show-candidates-functions '(nskk-candidate-show-list))
           (nskk-henkan-show-candidates-nth 2)
           (nskk-henkan-number-to-display-candidates 2)
-          (original-build (symbol-function 'nskk--candidate-build-string))
+          (original-build nskk-candidate-format-function)
           pages)
       (nskk-annotation-initialize)
       (nskk-e2e--load-annotated-user-dictionary
        ";; okuri-ari entries.\nかk /書/描;okuri-note/欠/\n;; okuri-nasi entries.\nかんじ /漢字/感じ;note-two/幹事/監事;note-four/完治/莞爾/\nたぶ /初/次;tab\tinside/後/\n#こ /先頭/#0個;raw-note/12個;literal-note/#0コ/\n")
       (cl-letf (((symbol-function 'nskk-candidate-show-list) original-show-list)
-                ((symbol-function 'nskk--candidate-build-string)
+                (nskk-candidate-format-function
                  (lambda (&rest args)
                    (let ((rendered (apply original-build args)))
                      (push (substring-no-properties rendered) pages)
@@ -1472,7 +1473,7 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
           (should (string-match-p (regexp-quote fragment) rendered)))
         (when absent (should-not (string-match-p absent rendered))))))))
 
-(ert-deftest nskk-e2e-annotation-numeric-concrete-reading-first ()
+(nskk-test-case nskk-e2e-annotation-numeric-concrete-reading-first
   "Concrete and template candidates retain their own annotations."
   (nskk-e2e-with-buffer 'hiragana '(("34こ" . ("固定"))
                                   ("#こ" . ("#0個")))
@@ -1492,7 +1493,7 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
         (execute-kbd-macro (kbd "x C-j"))
         (should (equal (buffer-string) "固定"))))))
 
-(ert-deftest nskk-e2e-annotation-numeric-collision-inline ()
+(nskk-test-case nskk-e2e-annotation-numeric-collision-inline
   (nskk-e2e-with-buffer 'hiragana '(("#こ" . ("#0個" "12個")))
     (let ((nskk-show-annotation t)
           (nskk-henkan-show-candidates-nth 5))
@@ -1508,7 +1509,7 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
         (execute-kbd-macro (kbd "x"))
         (should (equal nskk--annotation-current "raw-note"))))))
 
-(ert-deftest nskk-e2e-study-preserves-numeric-collision-annotations ()
+(nskk-test-case nskk-e2e-study-preserves-numeric-collision-annotations
   "Ambiguous legacy facts prefer a matching raw candidate, as DDSKK does."
   (nskk-e2e-with-buffer 'hiragana '(("#こ" . ("#0個" "12個")))
     (let ((nskk-show-annotation t)
@@ -1528,7 +1529,7 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
         (execute-kbd-macro (kbd "C-j"))
         (should (equal (buffer-string) "12個"))))))
 
-(ert-deftest nskk-e2e-study-learns-selected-numeric-identity ()
+(nskk-test-case nskk-e2e-study-learns-selected-numeric-identity
   (nskk-e2e-with-buffer 'hiragana '(("#こ" . ("#0個" "12個")))
     (let ((nskk-show-annotation t)
           (nskk-henkan-show-candidates-nth 5)
@@ -1556,7 +1557,7 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
         (execute-kbd-macro (kbd "SPC"))
         (should (equal nskk--annotation-current "raw-note"))))))
 
-(ert-deftest nskk-e2e-study-numeric-raw-match-precedes-legacy-display ()
+(nskk-test-case nskk-e2e-study-numeric-raw-match-precedes-legacy-display
   (dolist (raw-match '(nil t))
     (nskk-e2e-with-buffer 'hiragana '(("#こ" . ("#0個" "#3個")))
       (let ((nskk-henkan-show-candidates-nth 5)

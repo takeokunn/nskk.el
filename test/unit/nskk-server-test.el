@@ -731,7 +731,7 @@ NAME-VAR is a string used to name both.  Both are destroyed afterwards, and
          ("かK" "1/[角]/]/\n" ("[角]" "]")))
   :body (should (equal (nskk--server-parse-response response key) expected)))
 
-(ert-deftest nskk-server-okuri-block-annotations ()
+(nskk-test-case nskk-server-okuri-block-annotations
   (nskk-prolog-test-with-isolated-db
     (let ((nskk--annotation-initialized nil))
       (should (equal (nskk--server-parse-response

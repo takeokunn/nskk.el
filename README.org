@@ -1,4 +1,4 @@
-#+title: NSKK — Next-generation SKK for Emacs
+#+title: NSKK: Japanese input for Emacs
 #+author: takeokunn
 
 [[https://github.com/takeokunn/nskk.el/actions/workflows/ci.yml][file:https://github.com/takeokunn/nskk.el/actions/workflows/ci.yml/badge.svg]]
@@ -10,7 +10,7 @@ NSKK is a Japanese input method for Emacs based on SKK (Simple Kana to Kanji).
 Type a reading in romaji, start conversion with =SPC=, and select a candidate
 from an SKK dictionary.
 * Features
-** Zero Dependencies
+** Requirements
 
 Requires Emacs 29.1 or later. No external ELPA packages are required.
 
@@ -64,11 +64,9 @@ configuration. Replace the paths with existing dictionary files before enabling 
   ;; Start in hiragana mode (optional, default is ascii)
   (nskk-state-default-mode 'hiragana)
 
-  ;; System dictionaries
   (nskk-dict-system-dictionary-files
    '("/usr/share/skk/SKK-JISYO.L"))
 
-  ;; User dictionary location
   (nskk-dict-user-dictionary-file "~/.nskk/jisyo")
 
   ;; Show candidate list after 2nd SPC (default: 5)
@@ -83,7 +81,7 @@ configuration. Replace the paths with existing dictionary files before enabling 
 
 | From     | Key       | To         | Indicator |
 |----------+-----------+------------+-----------|
-| Any      | =C-x C-j= | Toggle on/off | —         |
+| Any      | =C-x C-j= | Toggle on/off |           |
 | ascii    | =C-j=     | hiragana   | かな       |
 | hiragana | =q=       | katakana   | カナ       |
 | hiragana | =l=       | latin      | SKK       |
@@ -187,17 +185,18 @@ to select a visible candidate.
 | =jisx0208-latin= | 全英       | Full-width latin (JIS X 0208)     |
 | =abbrev=         | aA        | Literal dictionary key input: =/word SPC= looks up =word= |
 
+Half-width katakana has no default switching key. In an NSKK buffer, evaluate
+=(nskk-set-mode 'katakana-半角)= or bind a command that calls it.
+
 * Configuration
 ** SKK Server (skkserv)
 #+begin_src elisp
-;; Connect to a running skkserv for extended dictionary lookup
 (setopt nskk-server-enable t)
 (setopt nskk-server-host "localhost")
 (setopt nskk-server-portnum 1178)
 #+end_src
 ** AZIK Extended Romaji
 #+begin_src elisp
-;; Enable AZIK for more efficient romaji input
 (setopt nskk-converter-romaji-style 'azik)
 
 ;; Keyboard layout (us101 or jp106, default: jp106)
@@ -212,7 +211,8 @@ AZIK adds shortened input sequences:
 ** Optional Features
 
 These modules are included in this repository and loaded when NSKK starts.
-Use the settings below to enable their behavior.
+The display and integration settings below are disabled by default. Region
+commands can be called without enabling an option.
 
 | Feature              | Module                 | Enable with                                  |
 |----------------------+------------------------+----------------------------------------------|
@@ -227,27 +227,23 @@ Use the settings below to enable their behavior.
 Context auto-mode switches to Latin input outside strings and comments in
 programming modes. It does not automatically switch back to kana input.
 
-=nskk-study= ships with NSKK but is not loaded automatically. Require it
-explicitly to enable contextual learning, which reorders candidates based on
-the previously confirmed word:
+=nskk-study= ships with NSKK but is not loaded automatically. Require it before
+the first =nskk-mode= activation so that activation loads its saved learning
+data. Contextual learning reorders candidates based on the previously
+confirmed word:
 
 #+begin_src elisp
 (require 'nskk-study)
-
-;; Where associations are persisted.
-;; Default: "nskk/study.dat" under `user-emacs-directory'
-(setopt nskk-study-file (expand-file-name "nskk/study.dat" user-emacs-directory))
 #+end_src
 
 ** Dynamic Completion
 #+begin_src elisp
 ;; How completion is presented in preedit.
-;;   capf  -- completion-at-point-functions; works with corfu, company,
-;;            vertico or the built-in *Completions* (default)
+;;   capf  -- completion-at-point-functions (default)
 ;;   cycle -- DDSKK-style TAB cycling, replacing preedit text directly
 (setopt nskk-dcomp-style 'capf)
 
-;; Show several completion candidates at once instead of one
+;; In cycle style, show a list below preedit while cycling
 (setopt nskk-dcomp-multiple-activate t)
 #+end_src
 
@@ -279,24 +275,153 @@ Entries name a command or function NSKK will execute; only add sources you
 trust. With =nskk-program-dict-enable= nil, the default, lookups fail
 immediately and =nskk-program-dicts= is never consulted.
 
+** Emacs Lisp Extensions
+
+Require =nskk= before evaluating these examples. Input rules, key bindings,
+and presentation can be changed with ordinary Emacs Lisp; extensions do not
+need to call the internal Prolog or continuation APIs.
+
+*** Keys and input state
+
+Edit =nskk-mode-map= directly, including after =nskk-mode= is enabled.
+=nskk-current-key-state= returns =normal=, =preedit=, or =converting=.
+This command switches to hiragana only outside preedit and conversion:
+
+#+name: nskk-extension-keys
+#+begin_src elisp
+(require 'nskk)
+
+(defun my-nskk-hiragana ()
+  (interactive)
+  (when (eq (nskk-current-key-state) 'normal)
+    (nskk-set-mode 'hiragana)))
+
+(define-key nskk-mode-map (kbd "C-c j") #'my-nskk-hiragana)
+#+end_src
+
+*** Persistent input rules
+
+=nskk-converter-user-rules= adds or replaces exact romaji rules. These rules
+take precedence over the selected style, including =nskk-azik-conversion-table=, and
+survive style changes and reloads.
+
+#+name: nskk-extension-rules
+#+begin_src elisp
+(require 'nskk)
+
+(setopt nskk-converter-user-rules '(("qa" . "くぁ")
+                                   ("ka" . "ヵ")))
+#+end_src
+
+=setopt= rebuilds the conversion table immediately. After using =setq=,
+call =(nskk-converter-reload-style nskk-converter-romaji-style)= to apply the value.
+A failed rebuild keeps the previous working table.
+Remove an entry and reload to restore the style's
+rule; this option does not delete built-in rules. =nskk-converter-add-rule=
+and =nskk-converter-remove-rule= remain temporary edits to the current table.
+
+*** Candidate list UI
+
+The show hook receives the full candidate list and its zero-based page start.
+The hide hook takes no arguments. The selector receives a key character, the
+full list, and the page start; it returns an absolute candidate index or =nil=.
+This example replaces the list overlay with echo-area output and reuses the
+standard selector:
+
+#+name: nskk-extension-candidate-ui
+#+begin_src elisp
+(require 'nskk)
+
+(defun my-nskk-show-candidates (candidates start)
+  (message "%s"
+           (mapconcat #'identity
+                      (cl-mapcar (lambda (key candidate)
+                                   (format "%c:%s" key candidate))
+                                 nskk-henkan-show-candidates-keys
+                                 (seq-take (nthcdr start candidates)
+                                           nskk-henkan-number-to-display-candidates))
+                      "  ")))
+
+(defun my-nskk-hide-candidates ()
+  (message nil))
+
+(setq nskk-henkan-show-candidates-functions '(my-nskk-show-candidates)
+      nskk-henkan-hide-candidates-functions '(my-nskk-hide-candidates)
+      nskk-henkan-select-candidate-by-key-function
+      #'nskk-candidate-list-select-by-key)
+#+end_src
+
+These variables have standard UI defaults; setting them to =nil= disables
+their respective callbacks. Use =setq-local= for a buffer-specific UI.
+Changes take effect at the next candidate operation: NSKK hides the old UI
+before showing and selecting through the new one. Cleanup uses the hide
+callbacks captured for the UI that was shown, even if settings change again.
+Hide callbacks must release resources after a partially failed show as well
+as after a completed show. NSKK attempts all hide callbacks on cleanup and
+preserves the original error or quit condition.
+
+The following example is an alternative to the replacement UI above.
+For text-only changes, keep the standard UI and set
+=nskk-candidate-format-function= instead. It receives page candidates,
+selection key characters, and the remaining candidate count, and must return
+the overlay's after-string. =nskk-henkan-show-candidates-keys= controls both
+the displayed labels and standard key selection without re-enabling NSKK.
+
+#+name: nskk-extension-candidate-format
+#+begin_src elisp
+(require 'nskk)
+
+(defun my-nskk-candidate-text (candidates keys remaining)
+  (concat (nskk-candidate-format candidates keys remaining) "  [選択]"))
+
+(setopt nskk-candidate-format-function #'my-nskk-candidate-text)
+#+end_src
+
+*** Mode labels and cursor faces
+
+=nskk-mode-display-alist= entries have the form
+=(MODE LABEL FACE HELP CURSOR-FACE)=. Mode-line text, transient mode labels,
+and cursor colors read this same table. =nskk-mode-display-properties= returns
+the four properties for a mode, or =nil= when it has no entry.
+This changes the hiragana label without replacing the other modes:
+
+#+name: nskk-extension-mode-display
+#+begin_src elisp
+(require 'nskk)
+
+(setf (alist-get 'hiragana nskk-mode-display-alist)
+      '("あ" nskk-modeline-hiragana-face "ひらがな" nskk-cursor-hiragana))
+(nskk-modeline-update)
+#+end_src
+
+Changes are read on the next display update even if the input mode has not
+changed. Call =nskk-modeline-update= to refresh the current buffer immediately.
+For buffer-local changes, first copy the table with
+=(setq-local nskk-mode-display-alist (copy-tree nskk-mode-display-alist))=.
+
+*** Inline candidate text
+
+=nskk-inline-format-function= receives a candidate string and the current
+=nskk-show-inline= style, and must return an after-string. NSKK still owns
+the overlay and its cleanup. Styles =t= and =horizontal= place text beside
+preedit; =vertical= places it below. Set =nskk-show-inline= to =nil= to disable it.
+
+#+name: nskk-extension-inline
+#+begin_src elisp
+(require 'nskk)
+
+(defun my-nskk-inline-text (candidate style)
+  (concat (if (eq style 'vertical) "\n" " ") "[" candidate "]"))
+
+(setopt nskk-inline-format-function #'my-nskk-inline-text
+        nskk-show-inline t)
+#+end_src
+
 ** Customization Group
 #+begin_example
 M-x customize-group RET nskk RET
 #+end_example
 * Development
-** Setup
-#+begin_src bash
-git clone https://github.com/takeokunn/nskk.el.git
-cd nskk.el
-
-# Using the provided Nix development environment
-nix develop
-
-# Or without Nix (requires Emacs 29.1+)
-make compile
-make test
-#+end_src
-
 ** Commands
 
 | Command                 | Description                |
@@ -312,8 +437,7 @@ make test
 | =make clean=            | Remove =*.elc= files       |
 
 CI gates on =make compile=, =make test=, =make lint= and =make package-lint=
-across Emacs 29.1, 29.4, 30.1 and snapshot. =make lint= is checkdoc only, so
-it does not stand in for =make package-lint=.
+across Emacs 29.1, 29.4, 30.1 and snapshot.
 
 * Changelog
 
@@ -321,7 +445,7 @@ See [[file:CHANGELOG.md][CHANGELOG.md]].
 
 * Contributing
 
-See [[file:CONTRIBUTING.md][CONTRIBUTING.md]] for the full development and pull request guidelines.
+See [[file:CONTRIBUTING.md][CONTRIBUTING.md]] for development and pull request guidelines.
 
 * License
 
@@ -329,5 +453,5 @@ See [[file:CONTRIBUTING.md][CONTRIBUTING.md]] for the full development and pull 
 
 * Acknowledgments
 
-- [[https://github.com/skk-dev/ddskk][DDSKK]] — A long-standing and widely used SKK implementation for Emacs
+- [[https://github.com/skk-dev/ddskk][DDSKK]]
 - All SKK dictionary contributors

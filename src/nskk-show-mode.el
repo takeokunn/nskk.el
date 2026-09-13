@@ -18,7 +18,7 @@
 ;;; Commentary:
 ;; Inline mode indicator display for NSKK (Layer 5: Presentation).
 ;;
-;; Layer position: L5 (Presentation) -- depends on nskk-state, nskk-prolog,
+;; Layer position: L5 (Presentation) -- depends on nskk-state
 ;;   and nskk-cps-macros.
 ;;
 ;; When `nskk-show-mode-show' is non-nil, displays a brief mode indicator
@@ -28,12 +28,10 @@
 ;;
 ;; This is the nskk.el equivalent of ddskk's `skk-show-mode.el'.
 ;;
-;; Prolog predicates maintained by this module: none.
-;; Mode display data is queried from `mode-properties/5' in nskk-state.el.
+;; Mode display data comes from `nskk-mode-display-alist' in nskk-state.el.
 ;;; Code:
 
 (require 'nskk-state)
-(require 'nskk-prolog)
 (require 'nskk-cps-macros)
 
 ;;;; Customization
@@ -95,6 +93,9 @@ suppressed as a duplicate.  Not an on-screen flag: the inline auto-hide
 clears it, but a tooltip that auto-hides leaves it set, since a mode that
 was shown and timed out should not be flashed again unprompted.")
 
+(defvar-local nskk--show-mode-last-settings nil
+  "Snapshot of the indicator, style and duration most recently displayed.")
+
 (defvar-local nskk--show-mode-inline-generation 0
   "Generation used to reject callbacks from replaced inline displays.")
 
@@ -129,11 +130,9 @@ was shown and timed out should not be flashed again unprompted.")
 
 (defun nskk--show-mode-indicator-string (mode)
   "Return the bracket-wrapped indicator string for MODE.
-Queries `mode-properties/5' for the display string, wraps it in brackets.
-Returns nil when MODE has no `mode-properties/5' fact."
-  (when-let* ((data (nskk-prolog-query-values
-                     `(mode-properties ,mode ,'\?s ,'\?f ,'\?h ,'\?c)
-                     '(\?s)))
+Reads the label from `nskk-mode-display-alist'.
+Returns nil when MODE has no display entry."
+  (when-let* ((data (nskk-mode-display-properties mode))
               (display-str (car data)))
     (propertize (format "[%s]" display-str) 'face 'nskk-show-mode-inline-face)))
 
@@ -328,19 +327,25 @@ condition."
 (defun/done nskk-show-mode-display ()
   "Display mode indicator near cursor if `nskk-show-mode-show' is non-nil.
 Queries the current mode from `nskk-current-state', builds the indicator
-string via `mode-properties/5', and displays it briefly.
+string via `nskk-mode-display-alist', and displays it briefly.
 No-op when `nskk-show-mode-show' is nil or state is unset."
   (when (and nskk-show-mode-show
              (boundp 'nskk-current-state)
              nskk-current-state)
     (let* ((mode (nskk-state-mode nskk-current-state))
-           (indicator (nskk--show-mode-indicator-string mode)))
-      (when (and indicator
-                 (not (eq mode nskk--show-mode-last-mode)))
-        (when (pcase nskk-show-mode-style
-                ('tooltip (nskk--show-mode-display-tooltip indicator))
-                (_        (nskk--show-mode-display-inline indicator)))
-          (setq nskk--show-mode-last-mode mode))))))
+           (indicator (nskk--show-mode-indicator-string mode))
+           (settings (list indicator nskk-show-mode-style
+                           nskk-show-mode-duration)))
+      (if (null indicator)
+          (nskk-show-mode-hide)
+        (unless (and (eq mode nskk--show-mode-last-mode)
+                     (equal-including-properties
+                      settings nskk--show-mode-last-settings))
+          (when (pcase nskk-show-mode-style
+                  ('tooltip (nskk--show-mode-display-tooltip indicator))
+                  (_        (nskk--show-mode-display-inline indicator)))
+            (setq nskk--show-mode-last-mode mode
+                  nskk--show-mode-last-settings settings)))))))
 
 (provide 'nskk-show-mode)
 

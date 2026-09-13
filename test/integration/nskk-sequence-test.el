@@ -81,7 +81,7 @@
                               (call-interactively command)))
                           (funcall observer index keys)))))))
 
-(ert-deftest nskk-sequence-state-never-corrupt ()
+(nskk-test-case nskk-sequence-state-never-corrupt
   (let* ((nskk-test-random-seed (or nskk-test-random-seed 459))
          (corpus (nskk-sequence-test--corpus nskk-test-random-seed)))
     (nskk-sequence-test--run
@@ -92,7 +92,7 @@
      (lambda (_index _keys)
        (should (nskk-sequence-test--valid-state-p nskk-current-state))))))
 
-(ert-deftest nskk-sequence-buffer-bounds-valid ()
+(nskk-test-case nskk-sequence-buffer-bounds-valid
   (let* ((nskk-test-random-seed (or nskk-test-random-seed 459))
          (corpus (nskk-sequence-test--corpus nskk-test-random-seed)))
     (nskk-sequence-test--run
@@ -103,7 +103,7 @@
        (should (= (point) (point-max)))
        (should (= (point-min) 1))))))
 
-(ert-deftest nskk-sequence-mode-always-valid ()
+(nskk-test-case nskk-sequence-mode-always-valid
   (let* ((nskk-test-random-seed (or nskk-test-random-seed 459))
          (corpus (nskk-sequence-test--corpus nskk-test-random-seed)))
     (nskk-sequence-test--run
@@ -118,7 +118,7 @@
      (lambda (_index _keys)
        (should (nskk-state-valid-mode-p (nskk-state-mode nskk-current-state)))))))
 
-(ert-deftest nskk-sequence-romaji-buffer-consistent ()
+(nskk-test-case nskk-sequence-romaji-buffer-consistent
   (let* ((nskk-test-random-seed (or nskk-test-random-seed 459))
          (corpus (nskk-sequence-test--corpus nskk-test-random-seed)))
     (nskk-sequence-test--run

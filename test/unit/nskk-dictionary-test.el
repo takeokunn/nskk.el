@@ -25,7 +25,7 @@
 (defvar skkdic-okuri-ari nil)
 (defvar skkdic-okuri-nasi nil)
 
-(ert-deftest nskk-dictionary-raw-record-key-context ()
+(nskk-test-case nskk-dictionary-raw-record-key-context
   (should (equal (nskk-dict-parse-line "かk /書;write/描;draw/[く/書;write/]/[け/描;draw/]/")
                  '("かk" "書" "描")))
   (dolist (key '("かな" "ascii" "[literal]"))
@@ -35,7 +35,7 @@
                   "/書;write/描;draw/[く/書;write/]/[け/描;draw/]/" "かk")
                  '(("書;write" "描;draw") . "[く/書;write/]/[け/描;draw/]/"))))
 
-(ert-deftest nskk-dictionary-raw-record-registration-lifecycle ()
+(nskk-test-case nskk-dictionary-raw-record-registration-lifecycle
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-set-index 'user-dict-entry 2 :trie)
     (nskk-prolog-assert '((user-dict-entry "かk" ("書" "描"))))
@@ -61,7 +61,7 @@
         (should (nskk-dict-unregister-word "かk" word)))
       (should-not (nskk-prolog-query-value '(user-dict-source-entry "かk" \?r) '\?r)))))
 
-(ert-deftest nskk-dictionary-okuri-registration-and-purge ()
+(nskk-test-case nskk-dictionary-okuri-registration-and-purge
   (nskk-prolog-test-with-isolated-db
     (nskk--dict-publish-user-entries
      '(("かk" ("書;note" "描") . "[け/書;note/描/]/[く/描/書;note/]/")
@@ -83,7 +83,7 @@
         (should (nskk-dict-unregister-word "かk" "描" "く"))
         (should (equal (saved) "かk /影;shadow/[く/影;shadow/]/\n"))))))
 
-(ert-deftest nskk-dictionary-okuri-block-boundaries ()
+(nskk-test-case nskk-dictionary-okuri-block-boundaries
   (should (equal (nskk--dict-update-okuri-block "[く/書;other/書;note/]/" "く" "書" "書;note" nil)
                  "[く/書;note/書;other/]/"))
   (should (equal (nskk--dict-update-okuri-block "[く/書;other/書;note/]/" "く" "書" "書;note" t)
@@ -96,7 +96,7 @@
                  "[く/書/]/"))
   (should-not (nskk--dict-update-okuri-block "[く/書/]/" "く" "書" nil t)))
 
-(ert-deftest nskk-dictionary-okuri-cps-backward-compatible ()
+(nskk-test-case nskk-dictionary-okuri-cps-backward-compatible
   (cl-letf (((symbol-function 'nskk--dict-register-impl) (lambda (_reading _word) t))
             ((symbol-function 'nskk--dict-unregister-impl) (lambda (_reading _word) t)))
     (should (nskk-dict-register-word "かな" "仮名"))
@@ -115,7 +115,7 @@
       (nskk-dict-unregister-word/k "かk" "書" (lambda (value) (push value calls)) #'ert-fail)
       (should (equal calls '(t t t t))))))
 
-(ert-deftest nskk-dictionary-okuri-mutation-rollback ()
+(nskk-test-case nskk-dictionary-okuri-mutation-rollback
   (dolist (operation '(nskk-dict-register-word nskk-dict-unregister-word))
     (dolist (failure '(error quit))
       (nskk-prolog-test-with-isolated-db
@@ -137,7 +137,7 @@
                          '("書" "描")))
           (should (equal before (nskk--dict-user-entry-text '("かk" ("書" "描"))))))))))
 
-(ert-deftest nskk-dictionary-raw-record-publication-rollback ()
+(nskk-test-case nskk-dictionary-raw-record-publication-rollback
   (dolist (failure '(error quit))
     (nskk-prolog-test-with-isolated-db
       (nskk--dict-publish-user-entries '(("かk" ("書;write") . "[く/書;write/]/")))
@@ -168,7 +168,7 @@
         (should (equal (nskk-prolog-query-value '(user-dict-source-entry "なk" \?r) '\?r)
                        '(("亡;dead") . "[き/亡;dead/]/")))))))
 
-(ert-deftest nskk-dictionary-raw-record-rejects-old-cache ()
+(nskk-test-case nskk-dictionary-raw-record-rejects-old-cache
   (let ((nskk-dict-system-dictionary-files '("unused"))
         (entries '(("かk" "書"))))
     (should (equal (nskk--dict-cache-data
@@ -179,7 +179,7 @@
     (should-not (nskk--dict-cache-data
                  (list :version 1 :source-files '("unused") :entries entries)))))
 
-(ert-deftest nskk-dictionary-cache-independent-schema-guards ()
+(nskk-test-case nskk-dictionary-cache-independent-schema-guards
   (let* ((nskk-dict-system-dictionary-files '("/dict"))
          (valid '(:version 3 :source-files ("/dict")
                   :entries (("あ" "亜")) :annotations nil)))
@@ -190,7 +190,7 @@
         (plist-put invalid (car change) (cdr change))
         (should-not (nskk--dict-cache-data invalid))))))
 
-(ert-deftest nskk-dictionary-raw-record-duplicate-lifecycle ()
+(nskk-test-case nskk-dictionary-raw-record-duplicate-lifecycle
   (dolist (shadow '("描;draw" "書;shadow"))
     (nskk-prolog-test-with-isolated-db
       (let* ((shadow-word (car (nskk--dict-split-candidate-annotation shadow)))
@@ -222,7 +222,7 @@
           (should (= 1 (length (nskk-prolog-query-bindings
                                '(user-dict-source-entry \?k \?r) '(\?k \?r))))))))))
 
-(ert-deftest nskk-dictionary-raw-record-shadow-promotion-rollback ()
+(nskk-test-case nskk-dictionary-raw-record-shadow-promotion-rollback
   (dolist (failure '(error quit))
     (nskk-prolog-test-with-isolated-db
       (nskk--dict-publish-user-entries
@@ -4606,7 +4606,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
            (when (file-directory-p temp-dir)
              (delete-directory temp-dir t)))))))))
 
-(ert-deftest nskk-dictionary-raw-registration-preserves-annotation-and-shadow ()
+(nskk-test-case nskk-dictionary-raw-registration-preserves-annotation-and-shadow
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-set-index 'user-dict-entry 2 :trie)
     (nskk-prolog-assert '((user-dict-entry "34" ("三十四" "卅四"))))
@@ -4625,7 +4625,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
                '(user-dict-source-entry "34" (("影;shadow") . nil))))
       (should nskk-dict-modified))))
 
-(ert-deftest nskk-dictionary-raw-registration-rolls-back-error-and-quit ()
+(nskk-test-case nskk-dictionary-raw-registration-rolls-back-error-and-quit
   (dolist (kind '(error quit))
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-set-index 'user-dict-entry 2 :trie)
@@ -4647,12 +4647,12 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
         (should (equal (nskk--dict-user-annotation "34" "卅四") "old"))
         (should-not nskk-dict-modified)))))
 
-(ert-deftest nskk-dictionary-raw-registration-rejects-mismatched-or-unsafe-raw ()
+(nskk-test-case nskk-dictionary-raw-registration-rejects-mismatched-or-unsafe-raw
   (dolist (raw '("違う;annotation" "卅四/unsafe" "卅四;bad\nline" "卅四;bad\0byte"))
     (should-error (nskk--dict-register-raw-word "34" "卅四" raw)
                   :type 'nskk-dict-error)))
 
-(ert-deftest nskk-dictionary-cache-v3-rejects-unrelated-annotations ()
+(nskk-test-case nskk-dictionary-cache-v3-rejects-unrelated-annotations
   (let* ((nskk-dict-system-dictionary-files '("a" "b"))
          (data '(:version 3 :source-files ("a" "b")
                  :entries (("か" "蚊")) :annotations (("か" "蚊" "note")))))
@@ -4664,7 +4664,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
     (should-not (nskk--dict-cache-data
                  (plist-put (copy-sequence data) :version 2)))))
 
-(ert-deftest nskk-dictionary-cache-collector-is-source-only ()
+(nskk-test-case nskk-dictionary-cache-collector-is-source-only
   (nskk-prolog-test-with-isolated-db
     (let ((nskk-show-annotation nil) notes)
       (should (equal (nskk-dict-parse-line
@@ -4673,7 +4673,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
       (should (equal notes '(("か" "蚊" "source"))))
       (should-not (nskk-prolog-query-one '(dict-annotation "か" "蚊" \?note))))))
 
-(ert-deftest nskk-dictionary-cache-publication-restores-both-predicates ()
+(nskk-test-case nskk-dictionary-cache-publication-restores-both-predicates
   (dolist (condition '(error quit))
     (nskk-prolog-test-with-isolated-db
       (nskk--dict-publish-system-data '(("か" "旧")) '(("か" "旧" "old")))
@@ -4700,7 +4700,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
                       do (should (eq (aref old slot) (aref now slot))))))
          before keys)))))
 
-(ert-deftest nskk-dictionary-raw-candidate-source-precedence ()
+(nskk-test-case nskk-dictionary-raw-candidate-source-precedence
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-assert '((dict-annotation "34" "卅四" "system;tail")))
     (should (equal (nskk--dict-raw-candidate "34" "卅四") "卅四;system;tail"))

@@ -206,17 +206,17 @@
       (should (null color)))))
 
 (nskk-describe "nskk-modeline-indicator fallback values"
-  (nskk-it "returns string containing NSKK when Prolog returns no data"
+  (nskk-it "returns string containing NSKK when Lisp settings have no data"
     (nskk--modeline-clear-cache)
-    (nskk-with-mocks ((nskk-prolog-query-values (lambda (&rest _) nil)))
+    (let ((nskk-mode-display-alist nil))
       (let* ((nskk-current-state (nskk-state-create 'hiragana))
              (indicator (nskk-modeline-indicator)))
         (should (stringp indicator))
         (should (string-match-p "NSKK" indicator)))))
 
-  (nskk-it "uses default face when Prolog returns no data"
+  (nskk-it "uses default face when Lisp settings have no data"
     (nskk--modeline-clear-cache)
-    (nskk-with-mocks ((nskk-prolog-query-values (lambda (&rest _) nil)))
+    (let ((nskk-mode-display-alist nil))
       (let* ((nskk-current-state (nskk-state-create 'hiragana))
              (indicator (nskk-modeline-indicator)))
         (should (eq (get-text-property 0 'face indicator) 'default))))))
@@ -257,7 +257,7 @@
       (should (stringp (nth 0 received)))
       (should (symbolp (nth 1 received)))))
 
-  (nskk-it "memoizes: second call with same mode does not re-query Prolog"
+  (nskk-it "looks up the same mode without querying Prolog"
     (let ((query-count 0))
       (nskk--modeline-clear-cache)
       (nskk-with-mocks ((nskk-prolog-query-values
@@ -266,7 +266,7 @@
                            (list "かな" 'nskk-modeline-hiragana-face "Hiragana input mode"))))
         (nskk--modeline-with-data/k 'hiragana #'ignore #'ignore)
         (nskk--modeline-with-data/k 'hiragana #'ignore #'ignore)
-        (should (= query-count 1))
+        (should (= query-count 0))
         (should (eq (car nskk--modeline-indicator-cache) 'hiragana)))))
 
   (nskk-it "invalidates cache when mode changes"

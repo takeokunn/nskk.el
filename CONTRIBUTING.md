@@ -1,7 +1,5 @@
 # Contributing to NSKK
 
-Thank you for contributing to NSKK.
-
 ## Development setup
 
 NSKK requires Emacs 29.1 or later. The repository provides a Nix development
@@ -22,8 +20,7 @@ make test
 2. Keep each change focused and add regression tests for behavioral changes.
 3. Run the narrowest relevant test target, then run `make test` when practical.
 4. Run `make compile`, `make lint`, and `make package-lint`. CI gates on all
-   four targets. `make lint` runs checkdoc only, so a checkdoc pass says nothing
-   about `package-lint`, which is a separate target with its own failures.
+   four targets. `make lint` runs checkdoc only, not package-lint.
 5. Describe the user-visible behavior, compatibility impact, and verification
    performed in the pull request.
 
@@ -43,8 +40,8 @@ covers one version; the docstring-width rule below fails only on the 29.x legs.
 - Adding a file under `src/` means adding it to `SRC` in the Makefile, in
   dependency order. `SRC` is a hand-maintained list and `make compile` sets
   `byte-compile-error-on-warn`, so a file listed before something it depends on
-  fails the build. Test files need no such registration — `UNIT_SRC` is a
-  wildcard.
+  fails the build. Unit tests are discovered by the `UNIT_SRC` wildcard;
+  integration and E2E tests must be added to `INTEGRATION_SRC` and `E2E_SRC`.
 - Renaming an internal (`nskk--`) symbol means updating `test/` in the same
   change. The suite reaches into private symbols throughout; find the sites for
   one symbol with `grep -rn '<symbol>' test/`.

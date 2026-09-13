@@ -197,7 +197,7 @@
     (nskk-latin-region "ａｂｃ" "abc"))
   "Interactive region conversion command test cases.")
 
-(ert-deftest nskk-region-test/inactive-region-signals-without-modification ()
+(nskk-test-case nskk-region-test/inactive-region-signals-without-modification
   "Signal a user error and preserve the buffer when no region is active."
   (dolist (entry nskk-region-test--interactive-cases)
     (let ((command (nth 0 entry))
@@ -210,7 +210,7 @@
           (should-error (call-interactively command) :type 'user-error)
           (should (equal (buffer-string) before)))))))
 
-(ert-deftest nskk-region-test/active-region-normal-direction ()
+(nskk-test-case nskk-region-test/active-region-normal-direction
   "Convert every command with point after mark."
   (dolist (entry nskk-region-test--interactive-cases)
     (let ((command (nth 0 entry))
@@ -225,7 +225,7 @@
           (call-interactively command)
           (should (equal (buffer-string) expected)))))))
 
-(ert-deftest nskk-region-test/active-region-reverse-direction ()
+(nskk-test-case nskk-region-test/active-region-reverse-direction
   "Convert every command with point before mark."
   (dolist (entry nskk-region-test--interactive-cases)
     (let ((command (nth 0 entry))
@@ -240,7 +240,7 @@
           (call-interactively command)
           (should (equal (buffer-string) expected)))))))
 
-(ert-deftest nskk-region-test/change-group-restores-region-on-hook-failures ()
+(nskk-test-case nskk-region-test/change-group-restores-region-on-hook-failures
   "Restore text and active-region state for every injected hook failure."
   (dolist (entry nskk-region-test--interactive-cases)
     (dolist (phase '(before after))
@@ -284,7 +284,7 @@
                 (should (= (mark) before-mark))
                 (should (eq mark-active before-mark-active))))))))))
 
-(ert-deftest nskk-region-test/read-only-restores-active-region-state ()
+(nskk-test-case nskk-region-test/read-only-restores-active-region-state
   "Leave text and active-region state intact in read-only buffers."
   (dolist (entry nskk-region-test--interactive-cases)
     (let ((command (nth 0 entry))
@@ -326,7 +326,7 @@
       (should (equal (buffer-string) (concat "前" expected "後")))
       (should (= (point) (+ beg (length expected)))))))
 
-(ert-deftest nskk-region-test/interactive-bounds-locate-an-interior-region ()
+(nskk-test-case nskk-region-test/interactive-bounds-locate-an-interior-region
   "Convert only the selected span when the region is interior to the buffer."
   (with-temp-buffer
     (insert "前アイウ後")
@@ -337,7 +337,7 @@
       (call-interactively 'nskk-hiragana-region)
       (should (equal (buffer-string) "前あいう後")))))
 
-(ert-deftest nskk-region-test/stale-mark-without-transient-mark-mode-signals ()
+(nskk-test-case nskk-region-test/stale-mark-without-transient-mark-mode-signals
   "Reject a mark left active while `transient-mark-mode' is off."
   (with-temp-buffer
     (insert "アイウ")
@@ -348,7 +348,7 @@
       (should-error (call-interactively 'nskk-hiragana-region) :type 'user-error)
       (should (equal (buffer-string) "アイウ")))))
 
-(ert-deftest nskk-region-test/converts-with-an-inactive-mark-and-strict-mark-reading ()
+(nskk-test-case nskk-region-test/converts-with-an-inactive-mark-and-strict-mark-reading
   "Convert while the mark is set but inactive and `mark-even-if-inactive' is nil.
 Saving the mark has to read it unconditionally; a reading that honours
 activation signals `mark-inactive' here and aborts the conversion."
@@ -361,7 +361,7 @@ activation signals `mark-inactive' here and aborts the conversion."
       (nskk-hiragana-region (point-min) (point-max))
       (should (equal (buffer-string) "あいう")))))
 
-(ert-deftest nskk-region-test/restores-mark-deactivated-by-failing-body ()
+(nskk-test-case nskk-region-test/restores-mark-deactivated-by-failing-body
   "Restore mark activation when the failing body itself deactivated the mark."
   (with-temp-buffer
     (insert "あいう")

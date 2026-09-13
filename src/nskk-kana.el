@@ -207,7 +207,7 @@ Recognizes the following Unicode ranges:
       ("｡" "。") ("､" "、") ("･" "・") ("ｰ" "ー")
       ;; Combining marks
       ("ﾞ" "゛") ("ﾟ" "゜")
-      ;; Voiced (dakuten) extended — two-character hankaku sequences
+      ;; Voiced (dakuten) extended: two-character hankaku sequences
       ("ｶﾞ" "ガ") ("ｷﾞ" "ギ") ("ｸﾞ" "グ") ("ｹﾞ" "ゲ") ("ｺﾞ" "ゴ")
       ("ｻﾞ" "ザ") ("ｼﾞ" "ジ") ("ｽﾞ" "ズ") ("ｾﾞ" "ゼ") ("ｿﾞ" "ゾ")
       ("ﾀﾞ" "ダ") ("ﾁﾞ" "ヂ") ("ﾂﾞ" "ヅ") ("ﾃﾞ" "デ") ("ﾄﾞ" "ド")

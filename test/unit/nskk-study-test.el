@@ -506,7 +506,7 @@
                          '(study-association "old" "reading" "candidate"))))))
         (delete-file tmpfile)))))
 
-(ert-deftest nskk-study-test/load-rejects-symbolic-link ()
+(nskk-test-case nskk-study-test/load-rejects-symbolic-link
   "A study file reached through a symbolic link must not be loaded."
   (let* ((directory (make-temp-file "nskk-study-link-" t))
          (target (expand-file-name "target.el" directory))
@@ -529,7 +529,7 @@
                 '(study-association "new" "reading" "candidate"))))))
       (delete-directory directory t))))
 
-(ert-deftest nskk-study-test/load-detects-post-stat-symlink-race ()
+(nskk-test-case nskk-study-test/load-detects-post-stat-symlink-race
   "A file becoming a symbolic link after stat must not be loaded."
   (let ((file (make-temp-file "nskk-study-race-"))
         (symlink-checks 0))
@@ -554,7 +554,7 @@
                 '(study-association "new" "reading" "candidate"))))))
       (delete-file file))))
 
-(ert-deftest nskk-study-test/load-rejects-file-replaced-during-read ()
+(nskk-test-case nskk-study-test/load-rejects-file-replaced-during-read
   "A file replaced during reading must not update existing facts."
   (let ((file (make-temp-file "nskk-study-replaced-"))
         (replacement (make-temp-file "nskk-study-replacement-"))
@@ -589,7 +589,7 @@
       (when (file-exists-p replacement)
         (delete-file replacement)))))
 
-(ert-deftest nskk-study-test/load-rejects-non-regular-file ()
+(nskk-test-case nskk-study-test/load-rejects-non-regular-file
   "A non-regular study file must be rejected before any read.
 The rejection is also reported.  Before the shared transaction contract
 this case fell through the validation `cond' with no clause and was
@@ -626,7 +626,7 @@ regressing back to a silent no-op."
       (when (file-exists-p fifo)
         (delete-file fifo)))))
 
-(ert-deftest nskk-study-test/load-rolls-back-publication-error ()
+(nskk-test-case nskk-study-test/load-rolls-back-publication-error
   "Publication errors restore the exact previous predicate storage."
   (let ((file (make-temp-file "nskk-study-publication-error-"))
         (real-apply
@@ -667,7 +667,7 @@ regressing back to a silent no-op."
                     '(study-association "new" "reading" "candidate"))))))))
       (ignore-errors (delete-file file)))))
 
-(ert-deftest nskk-study-test/load-rolls-back-before-resignaling-quit ()
+(nskk-test-case nskk-study-test/load-rolls-back-before-resignaling-quit
   "Rollback completes under inhibited quit before the original quit is signaled."
   (let ((file (make-temp-file "nskk-study-publication-quit-"))
         (real-apply
@@ -782,15 +782,15 @@ regressing back to a silent no-op."
                       '(study-association "new" "reading" "candidate")))))))))
       (delete-file file))))
 
-(ert-deftest nskk-study-test/load-rejects-modification-time-change-during-read ()
+(nskk-test-case nskk-study-test/load-rejects-modification-time-change-during-read
   "An mtime-only race must not update existing facts."
   (nskk-study-test--assert-load-rejects-time-race 5))
 
-(ert-deftest nskk-study-test/load-rejects-status-change-time-change-during-read ()
+(nskk-test-case nskk-study-test/load-rejects-status-change-time-change-during-read
   "A ctime-only race must not update existing facts."
   (nskk-study-test--assert-load-rejects-time-race 6))
 
-(ert-deftest nskk-study-test/reorder-preserves-equal-candidate-identities ()
+(nskk-test-case nskk-study-test/reorder-preserves-equal-candidate-identities
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-retract-all 'study-association 3)
     (nskk-prolog-assert '((study-association "previous" "12こ" "12個")))
@@ -804,7 +804,7 @@ regressing back to a silent no-op."
       (should (eq (nth 2 result) second))
       (should (equal candidates '("別" "12個" "12個"))))))
 
-(ert-deftest nskk-study-test/reorder-removes-only-one-occurrence ()
+(nskk-test-case nskk-study-test/reorder-removes-only-one-occurrence
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-retract-all 'study-association 3)
     (nskk-prolog-assert '((study-association "previous" "12こ" "12個")))
@@ -815,7 +815,7 @@ regressing back to a silent no-op."
       (should (eq (car result) candidate))
       (should (eq (cadr result) candidate)))))
 
-(ert-deftest nskk-study-test/raw-identity-roundtrip-keeps-displayed-history ()
+(nskk-test-case nskk-study-test/raw-identity-roundtrip-keeps-displayed-history
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-retract-all 'study-association 3)
     (let ((nskk-study-file (make-temp-file "nskk-study-raw-"))
@@ -834,7 +834,7 @@ regressing back to a silent no-op."
                            '("#0個" "12個"))))
         (delete-file nskk-study-file)))))
 
-(ert-deftest nskk-study-test/raw-identity-respects-display-no-learn ()
+(nskk-test-case nskk-study-test/raw-identity-respects-display-no-learn
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-retract-all 'study-association 3)
     (let ((nskk-study-first-candidate t)
@@ -843,7 +843,7 @@ regressing back to a silent no-op."
       (nskk-study-record "12こ" (propertize "12個" 'nskk-no-learn t) 1 "#0個")
       (should-not (nskk-prolog-query '(study-association \?p \?r \?c))))))
 
-(ert-deftest nskk-study-test/reorder-signals-even-first-raw-match ()
+(nskk-test-case nskk-study-test/reorder-signals-even-first-raw-match
   (nskk-prolog-test-with-isolated-db
     (nskk--study-associate "previous" "12こ" "#0個")
     (let* ((nskk--study-kakutei-ring '((:word "previous")))

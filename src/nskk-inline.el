@@ -40,7 +40,7 @@
 ;; Candidates come from dictionaries and are untrusted, so each one passes
 ;; through `nskk-display-sanitize' before it reaches an overlay.  The overlay
 ;; priority comes from `nskk-overlay-priority-inline' in nskk-state.el, which
-;; also records why that number guarantees less than it appears to.
+;; documents its ordering limitations.
 
 ;;; Code:
 
@@ -67,6 +67,17 @@ Possible values:
                  (const :tag "Inline horizontal (explicit symbol)" horizontal)
                  (const :tag "Inline vertical" vertical))
   :safe (lambda (v) (memq v '(nil t vertical horizontal)))
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-inline)
+
+(defcustom nskk-inline-format-function #'nskk-inline-format-candidate
+  "Function formatting an inline candidate as an overlay after-string.
+Called with (CANDIDATE STYLE), where CANDIDATE is sanitized dictionary text
+and STYLE is `nskk-show-inline'.  Return a string, optionally propertized.
+The function must not manage overlays or timers.  Errors are handled by
+the presentation dispatcher.  This option is not safe as a file-local
+variable because its value executes Lisp."
+  :type 'function
   :package-version '(nskk . "0.1.0")
   :group 'nskk-inline)
 
@@ -103,7 +114,7 @@ falling back to point."
            (overlay-end (nskk-state-conversion-overlay)))
       (point)))
 
-(defun nskk--inline-render (candidate style)
+(defun nskk-inline-format-candidate (candidate style)
   "Return the overlay after-string showing CANDIDATE under STYLE.
 STYLE is an `nskk-show-inline' value: `vertical' puts CANDIDATE on the
 line below the preedit, any other non-nil value appends it to the preedit
@@ -112,17 +123,17 @@ separator carries the face along with the candidate."
   (nskk-display-sanitize candidate 'nskk-inline-face
                          (if (eq style 'vertical) "\n" " ")))
 
+(defun nskk--inline-render (candidate style)
+  "Format sanitized CANDIDATE under STYLE using the user's formatter."
+  (let ((result (funcall nskk-inline-format-function
+                         (substring-no-properties candidate) style)))
+    (unless (stringp result)
+      (signal 'wrong-type-argument (list 'stringp result)))
+    result))
+
 (defun/done nskk--inline-finalize ()
-  "Remove the inline overlay again, in the `finalize' cleanup phase.
-Duplicating `nskk-inline-hide' is deliberate.
-`nskk--run-presentation-actions' in nskk-henkan.el runs every callback
-through a `condition-case' that swallows `error' and `quit', so a
-`cleanup'-phase callback that signals leaves the overlay behind and
-`finalize' is the sweep that still removes it.  Registering
-`nskk-inline-hide' for both phases would not do: the fault-injection test
-in test/unit/nskk-henkan-test.el stubs `nskk-inline-hide' to always
-signal and then asserts the overlay is gone, which only a second,
-separately-named callback can satisfy."
+  "Remove the inline overlay during finalization.
+This separate callback still removes it when `nskk-inline-hide' signals."
   (nskk-delete-overlay nskk--inline-overlay))
 
 ;;;; Public API

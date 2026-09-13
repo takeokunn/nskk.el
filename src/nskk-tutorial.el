@@ -1273,7 +1273,7 @@ converter: `nskk-mode-map' routes ordinary letters into NSKK by remapping
   ;; Deliberately NOT `special-mode-map'.  The tutorial buffer is typed into,
   ;; and that map binds keys the lessons require as NSKK input: `h' and `?'
   ;; (describe-mode), `<' `>' (buffer motion), `-' and every digit
-  ;; (numeric-argument) — lesson 13 teaches `Q3Niti', lesson 2 「にほんご」.
+  ;; (numeric-argument).  Lesson 13 teaches `Q3Niti', lesson 2 「にほんご」.
   ;; An empty parent also stops `define-derived-mode' from installing
   ;; `special-mode-map' here on our behalf.
   :parent (make-sparse-keymap)
@@ -1283,9 +1283,9 @@ converter: `nskk-mode-map' routes ordinary letters into NSKK by remapping
   "p"   #'nskk-tutorial-p-or-self-insert
   "g"   #'nskk-tutorial-g-or-self-insert
   "r"   #'nskk-tutorial-r-or-self-insert
-  ;; Every plain letter is potential NSKK input — `q' is the katakana toggle
-  ;; taught in lesson 3 and `Q' starts numeric conversion in lesson 13 — so
-  ;; quitting needs a prefixed key that no lesson uses.
+  ;; Plain letters are NSKK input: `q' toggles katakana in lesson 3 and
+  ;; `Q' starts numeric conversion in lesson 13.  Quitting therefore needs
+  ;; a prefixed key that no lesson uses.
   "C-c C-q" #'nskk-tutorial-quit)
 
 (define-derived-mode nskk-tutorial-mode special-mode "NSKK-Tutorial"

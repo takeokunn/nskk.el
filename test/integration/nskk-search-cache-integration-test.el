@@ -22,16 +22,8 @@
 
 ;;; Commentary:
 
-;; The search-result cache subsystem this file used to exercise
-;; (`nskk-search-with-cache' and its `nskk--search-cache-*' glue in
-;; nskk-search.el) has been deleted; there is no longer a cache sitting
-;; between search and the dictionary.  Generic `nskk-cache.el' LRU/LFU
-;; behaviour (put/get/eviction/stats/invalidate) is unit-tested on its own
-;; in nskk-cache-test.el and does not belong here.
-;;
-;; What remains is the genuinely cross-module territory no unit test
-;; owns: learning scores recorded via `nskk-search-learn' reordering
-;; `nskk-search-prefix' results, and that ordering surviving a
+;; Learning scores recorded via `nskk-search-learn' reorder
+;; `nskk-search-prefix' results.  That ordering must survive a
 ;; `nskk-search-save-learning-data' / `nskk-search-load-learning-data'
 ;; round trip through the filesystem.
 

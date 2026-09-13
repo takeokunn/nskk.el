@@ -68,7 +68,7 @@ RUNS: Number of test runs (default: nskk-test-property-runs)"
   (declare (indent 3))
   (let ((runs-value (make-symbol "runs"))
         (failures (make-symbol "failures")))
-    `(ert-deftest ,(intern (format "nskk-property-%s" name)) ()
+    `(nskk-test-case ,(intern (format "nskk-property-%s" name))
        (let ((,runs-value (or ,runs nskk-test-property-runs))
              (,failures nil))
          (dotimes (_ ,runs-value)
@@ -138,7 +138,7 @@ SEED: Random seed for reproducibility (default: random)"
   (let ((test-seed (make-symbol "test-seed"))
         (runs-value (make-symbol "runs"))
         (failures (make-symbol "failures")))
-    `(ert-deftest ,(intern (format "nskk-property-%s" name)) ()
+    `(nskk-test-case ,(intern (format "nskk-property-%s" name))
        (let ((,test-seed (or ,seed nskk-test-random-seed (abs (random))))
              (,runs-value (or ,runs nskk-test-property-runs))
              (,failures nil))
@@ -173,7 +173,7 @@ SEED: Random seed for reproducibility (default: random)"
         (runs-value (make-symbol "runs"))
         (failure-case (make-symbol "failure-case"))
         (minimal-case (make-symbol "minimal-case")))
-    `(ert-deftest ,(intern (format "nskk-property-shrinking-%s" name)) ()
+    `(nskk-test-case ,(intern (format "nskk-property-shrinking-%s" name))
        (let ((,test-seed (or ,seed nskk-test-random-seed (abs (random))))
              (,runs-value (or ,runs nskk-test-property-runs))
              (,failure-case nil)
@@ -241,7 +241,7 @@ The test generates random sequences of transitions and verifies that
 the PROPERTY invariant holds after each transition."
   (declare (indent 3))
   (let ((property-fn (make-symbol "property-fn")))
-    `(ert-deftest ,(intern (format "nskk-state-machine-%s" name)) ()
+    `(nskk-test-case ,(intern (format "nskk-state-machine-%s" name))
      (let ((,property-fn ,property)
            (runs (or ,runs nskk-test-state-machine-runs))
            (failures nil)
@@ -357,7 +357,7 @@ NAME: Test name
 SCENARIO: Scenario description
 BODY: Test implementation"
   (declare (indent 2))
-  `(ert-deftest ,(intern (format "nskk-scenario-%s" name)) ()
+  `(nskk-test-case ,(intern (format "nskk-scenario-%s" name))
      ,scenario
      (nskk-with-clean-state
        (nskk-with-temp-dictionary
@@ -415,9 +415,9 @@ Use inside `nskk-it' to clarify expected outcomes."
   `(progn ,@assertions))
 
 (defun nskk--expand-it-form (prefix it-form)
-  "Expand a single IT-FORM into an `ert-deftest' with PREFIX.
+  "Expand a single IT-FORM into a `nskk-test-case' with PREFIX.
 IT-FORM must be (nskk-it BEHAVIOR &rest BODY).
-Returns an `ert-deftest' form or signals an error."
+Returns a `nskk-test-case' form or signals an error."
   (unless (and (listp it-form)
                (eq (car it-form) 'nskk-it)
                (>= (length it-form) 2))
@@ -427,7 +427,7 @@ Returns an `ert-deftest' form or signals an error."
          (test-name (intern (format "nskk-it/%s/%s"
                                     prefix
                                     (nskk--normalize-test-name behavior)))))
-    `(ert-deftest ,test-name ()
+    `(nskk-test-case ,test-name
        ,behavior
        (let ((nskk--test-mode t))
          (nskk--test-setup)
@@ -438,7 +438,7 @@ Returns an `ert-deftest' form or signals an error."
 (defmacro nskk-describe (description &rest body)
   "Group related test behaviors under DESCRIPTION.
 Each `nskk-it' or `nskk-it-k' form in BODY expands to an independent
-`ert-deftest'.  Each `nskk-context' form in BODY provides sub-grouping.
+`nskk-test-case'.  Each `nskk-context' form in BODY provides sub-grouping.
 Non-nskk-it/nskk-it-k/nskk-context forms are emitted as-is (for shared
 let/defvar etc).
 
@@ -498,7 +498,7 @@ BEHAVIOR should be a string describing what is being tested."
   (declare (indent 1))
   (let ((test-name (intern (format "nskk-unit-%s"
                                    (nskk--normalize-test-name behavior)))))
-    `(ert-deftest ,test-name ()
+    `(nskk-test-case ,test-name
        ,behavior
        (let ((nskk--test-mode t))
          (nskk--test-setup)
@@ -547,9 +547,9 @@ Returns a plist with keys:
           :not-found-body not-found-body)))
 
 (defun nskk--expand-it-k-form (prefix it-k-form)
-  "Expand a single IT-K-FORM into an `ert-deftest' with PREFIX.
+  "Expand a single IT-K-FORM into a `nskk-test-case' with PREFIX.
 IT-K-FORM must be (nskk-it-k BEHAVIOR K-CALL :found (BINDING) BODY...).
-Returns an `ert-deftest' form or signals an error."
+Returns a `nskk-test-case' form or signals an error."
   (unless (and (listp it-k-form)
                (eq (car it-k-form) 'nskk-it-k)
                (>= (length it-k-form) 4))
@@ -565,7 +565,7 @@ Returns an `ert-deftest' form or signals an error."
          (test-name (intern (format "nskk-it/%s/%s"
                                     prefix
                                     (nskk--normalize-test-name behavior)))))
-    `(ert-deftest ,test-name ()
+    `(nskk-test-case ,test-name
        ,behavior
        (let ((nskk--test-mode t))
          (nskk--test-setup)
@@ -610,7 +610,7 @@ named nskk-unit-BEHAVIOR (normalized).  Inside `nskk-describe' or
          (nf-body   (plist-get parsed :not-found-body))
          (test-name (intern (format "nskk-unit-%s"
                                     (nskk--normalize-test-name behavior)))))
-    `(ert-deftest ,test-name ()
+    `(nskk-test-case ,test-name
        ,behavior
        (let ((nskk--test-mode t))
          (nskk--test-setup)
@@ -660,7 +660,7 @@ Example:
                                   (format "Row %02d: %S" i row)))
                          (bindings (cl-mapcar (lambda (col val) `(,col ',val))
                                               columns row)))
-                    `(ert-deftest ,test-name ()
+                    `(nskk-test-case ,test-name
                        ,doc
                        (let ,bindings
                          ,body)))))))
@@ -748,7 +748,7 @@ Example:
       (error "nskk-property-from-contract: :precondition is required"))
     (unless postcond
       (error "nskk-property-from-contract: :postcondition is required"))
-    `(ert-deftest ,test-name ()
+    `(nskk-test-case ,test-name
        ,(format "Contract test: verifies %s honors its pre/postconditions." fn)
        (let ((failures nil)
              (test-seed (or nskk-test-random-seed (abs (random))))
@@ -850,7 +850,7 @@ DOMAIN: expression that evaluates to a list of all values to test
 PROPERTY: form evaluated with `item' bound to each domain element"
   (declare (indent 2))
   (let ((domain-value (make-symbol "domain")))
-    `(ert-deftest ,(intern (format "nskk-exhaustive-%s" name)) ()
+    `(nskk-test-case ,(intern (format "nskk-exhaustive-%s" name))
      ,(format "Exhaustive property test: %s" name)
      (let ((failures nil)
            (,domain-value ,domain))

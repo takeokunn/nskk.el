@@ -561,10 +561,6 @@ test/e2e/nskk-kana-input-e2e-test.el)."
       (should (= (length (nskk-converter-style-transaction-variables)) 1))))
 
   (nskk-it "a hash-table variable registered via the public API is staged and published like a built-in root"
-    ;; Mirrors the real usage in src/nskk-azik.el:273 and
-    ;; test/nskk-e2e-helpers.el:225 — registering through the public function
-    ;; (not by let-binding the private list directly) and confirming the
-    ;; registered variable actually participates in the transaction.
     (nskk-test-with-style-transaction-state
       (let ((extension-symbol 'nskk-test--registration-api-extension-table)
             (extension-table (make-hash-table :test 'equal)))
@@ -809,6 +805,7 @@ test/e2e/nskk-kana-input-e2e-test.el)."
          (nskk--style-registry (copy-tree nskk--style-registry))
          (nskk--style-inputs-registry (copy-tree nskk--style-inputs-registry))
          (nskk--converter-published-style nil)
+         (nskk-converter-user-rules nil)
          (nskk--converter-style-transaction-hash-tables nil)
          (nskk--converter-style-transaction-variables nil))
      (nskk-prolog-with-database-fields
@@ -1938,6 +1935,71 @@ test/e2e/nskk-kana-input-e2e-test.el)."
           (should-not (nskk-prolog-holds-p '(transaction-sentinel replaced)))
           (should (equal (nskk-converter-lookup "old") "旧"))
           (should-not (nskk-converter-lookup "new")))))))
+
+(nskk-describe "converter live user rules"
+  (nskk-it "rebuilds overrides and incomplete prefixes when rules change"
+    (nskk-test-with-style-transaction-state
+     (setq nskk-converter-user-rules '(("ka" . "家") ("qqx" . "印")
+				       ("ka" . "後")))
+     (nskk-converter-load-style 'standard)
+     (should (equal (nskk-converter-lookup "ka") "家"))
+     (should (equal (nskk-prolog-query-value '(romaji-to-kana "ka" \?k) '\?k)
+		    "家"))
+     (should (eq (nskk-converter-lookup "qq") :incomplete))
+     (should (equal (nskk-converter-lookup "qqx") "印"))
+     (setq nskk-converter-user-rules '(("ka" . "蚊")))
+     (nskk-converter-reload-style 'standard)
+     (should (equal (nskk-converter-lookup "ka") "蚊"))
+     (should-not (nskk-converter-lookup "qqx"))
+     (should-not (nskk-converter-lookup "qq"))
+     (setq nskk-converter-user-rules nil)
+     (nskk-converter-load-style 'standard)
+     (should (equal (nskk-converter-lookup "ka") "か"))))
+
+  (nskk-it "publishes mutated rule strings only after reloading"
+    (nskk-test-with-style-transaction-state
+     (setq nskk-converter-user-rules
+	   (list (cons (copy-sequence "qqx") (copy-sequence "A"))))
+     (nskk-converter-load-style 'standard)
+     (aset (caar nskk-converter-user-rules) 2 ?z)
+     (aset (cdar nskk-converter-user-rules) 0 ?B)
+     (should (equal (nskk-converter-lookup "qqx") "A"))
+     (should (equal (nskk-prolog-query-value '(romaji-to-kana "qqx" \?k) '\?k)
+		    "A"))
+     (nskk-converter-load-style 'standard)
+     (should-not (nskk-converter-lookup "qqx"))
+     (should (equal (nskk-converter-lookup "qqz") "B"))))
+
+  (nskk-it "retains published state when reloading invalid rules"
+    (nskk-test-with-style-transaction-state
+     (nskk-converter-load-style 'standard)
+     (let ((references (nskk-test--converter-style-state-references))
+	   (record nskk--converter-published-style))
+       (dolist (invalid '(bad (("" . "空")) (("ka" . 1)) (("ka" "家"))))
+	 (setq nskk-converter-user-rules invalid)
+	 (should-error (nskk-converter-reload-style 'standard))
+	 (nskk-test--should-retain-converter-style-state references)
+	 (should (eq record nskk--converter-published-style))
+	 (should (equal (nskk-converter-lookup "ka") "か"))))))
+
+  (nskk-it "publishes setopt changes and restores the option on failure"
+    (let ((saved (default-value 'nskk-converter-user-rules)))
+      (unwind-protect
+	  (nskk-test-with-style-transaction-state
+	   (nskk-converter-load-style 'standard)
+	   (setopt nskk-converter-user-rules '(("ka" . "家")))
+	   (should (equal (nskk-converter-lookup "ka") "家"))
+	   (should (equal (default-value 'nskk-converter-user-rules)
+			  '(("ka" . "家"))))
+	   (let ((references (nskk-test--converter-style-state-references)))
+	     (cl-letf (((symbol-function 'nskk--converter-populate-incomplete-markers)
+			(lambda () (error "Injected prefix finalization failure"))))
+	       (should-error (setopt nskk-converter-user-rules '(("ka" . "蚊")))))
+	     (nskk-test--should-retain-converter-style-state references)
+	     (should (equal (default-value 'nskk-converter-user-rules)
+			    '(("ka" . "家"))))
+	     (should (equal (nskk-converter-lookup "ka") "家"))))
+	(set-default 'nskk-converter-user-rules saved)))))
 
 (provide 'nskk-converter-test)
 

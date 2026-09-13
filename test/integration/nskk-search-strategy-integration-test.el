@@ -50,13 +50,9 @@ with the mock-dict fixture.  `nskk-with-prolog-entries' calls
 ;; `nskk-dict-lookup' (nskk-dictionary.el) queries the fixed `dict-entry'
 ;; predicate, which is bridged from `user-dict-entry' by a Prolog rule
 ;; (see nskk-dictionary.el's `(nskk-prolog-<- (dict-entry ?k ?c)
-;; (user-dict-entry ?k ?c))'), so it transparently sees the facts this
-;; fixture asserts under `user-dict-entry'.  Unlike the deleted
-;; `nskk-search', it returns a bare candidate list rather than an
-;; `nskk-dict-entry' struct.  `nskk-dictionary-test.el' already covers
-;; `nskk-dict-lookup' in isolation (found key, unknown key, empty key,
-;; okuri-ari); the tests kept here exist to feed the cross-strategy
-;; consistency checks below with a result computed independently of
+;; (user-dict-entry ?k ?c))'), so it sees the facts this fixture asserts
+;; under `user-dict-entry'.  These results feed the cross-strategy
+;; consistency checks below, independently of
 ;; `nskk-search-prefix'/`nskk-search-partial'.
 
 (nskk-describe "exact lookup via nskk-dict-lookup"

@@ -29,7 +29,6 @@
 ;;; Code:
 
 (require 'nskk-state)
-(require 'nskk-prolog)
 (require 'nskk-cps-macros)
 (require 'seq)
 
@@ -98,8 +97,8 @@ separating the indicator from adjacent mode indicators in the mode line."
 ;;;; Modeline Indicator
 
 (defvar-local nskk--modeline-indicator-cache nil
-  "Memoized modeline data as (MODE . (DISPLAY-STRING FACE HELP-TEXT)) or nil.
-Invalidated when the current NSKK mode changes.")
+  "Last modeline data as (MODE . (DISPLAY-STRING FACE HELP-TEXT)) or nil.
+Refreshed from the effective Lisp display settings on every lookup.")
 
 (defun nskk--modeline-cache-put (mode info)
   "Memoize INFO as the modeline display data for MODE and return INFO."
@@ -107,21 +106,15 @@ Invalidated when the current NSKK mode changes.")
   info)
 
 (defun/k nskk--modeline-with-data (mode)
-  "Fetch display data for MODE from cache or Prolog.
-The result is memoized in `nskk--modeline-indicator-cache' keyed by
-MODE so the Prolog engine is only queried when the mode changes.
+  "Fetch effective Lisp display data for MODE.
 Sync wrapper returns a list (DISPLAY-STRING FACE HELP-TEXT), or nil when
-MODE has no `mode-properties/5' fact.
+MODE has no entry in `nskk-mode-display-alist'.
 The /k variant calls ON-FOUND with that list, ON-NOT-FOUND otherwise."
-  (if (and nskk--modeline-indicator-cache
-           (eq (car nskk--modeline-indicator-cache) mode))
-      (succeed (cdr nskk--modeline-indicator-cache))
-    (let ((info (nskk-prolog-query-values
-                 `(mode-properties ,mode ,'\?s ,'\?f ,'\?h ,'\?c)
-                 '(\?s \?f \?h))))
-      (if info
-          (succeed (nskk--modeline-cache-put mode info))
-        (fail)))))
+  (let ((info (nskk-mode-display-properties mode)))
+    (if info
+        (succeed (nskk--modeline-cache-put mode (seq-take info 3)))
+      (setq nskk--modeline-indicator-cache nil)
+      (fail))))
 
 (defun nskk--modeline-render (display face help)
   "Return the mode-line lighter for DISPLAY carrying FACE and HELP."
@@ -131,12 +124,12 @@ The /k variant calls ON-FOUND with that list, ON-NOT-FOUND otherwise."
 
 (defun nskk-modeline-indicator ()
   "Return mode-line indicator string for the current NSKK input mode.
-Queries `mode-properties/5' for the display string, face, and
+Reads `nskk-mode-display-alist' for the display string, face, and
 help-echo text via `nskk--modeline-with-data/k'.  The string is
 formatted via `nskk-modeline-format'.
 
 Falls back to \"NSKK\" with `default' face when the current mode has
-no `mode-properties/5' fact.  Returns an empty string when
+no display entry.  Returns an empty string when
 `nskk-current-state' is nil or unbound."
   (if (bound-and-true-p nskk-current-state)
       (nskk--modeline-with-data/k
@@ -146,9 +139,7 @@ no `mode-properties/5' fact.  Returns an empty string when
     ""))
 
 (defun nskk--modeline-clear-cache ()
-  "Clear the memoized modeline indicator cache.
-Call this after any mode change to ensure the next redisplay
-re-queries the Prolog database for the new mode's display data."
+  "Discard the last modeline display data."
   (setq nskk--modeline-indicator-cache nil))
 
 (defun/done nskk-modeline-update ()
@@ -168,11 +159,10 @@ when `nskk-show-mode-show' is non-nil (via `nskk-show-mode-display')."
 (defun/k nskk--cursor-with-color (mode)
   "Return the cursor color string for input MODE.
 MODE is a mode symbol such as `hiragana' or `ascii'.
-Sync wrapper returns nil when MODE has no `mode-properties/5' fact, the
+Sync wrapper returns nil when MODE has no display entry, the
 cursor face is not defined, or its :background attribute is `unspecified'.
 The /k variant calls ON-FOUND with the color, ON-NOT-FOUND otherwise."
-  (let* ((face (nskk-prolog-query-value
-                `(mode-properties ,mode ,'\?s ,'\?f ,'\?h ,'\?c) '\?c))
+  (let* ((face (nth 3 (nskk-mode-display-properties mode)))
          (color (and face (facep face) (face-attribute face :background nil t))))
     (if (and color (not (eq color 'unspecified)))
         (succeed color)
@@ -191,11 +181,15 @@ Calls `set-cursor-color' only when the color differs from the last color
 applied to that frame.  Does nothing when cursor coloring is disabled or
 `nskk-current-state' is unavailable."
   (when (and nskk-use-color-cursor (bound-and-true-p nskk-current-state))
-    (when-let* ((mode (nskk-state-mode nskk-current-state))
-                (color (nskk--cursor-with-color mode))
-                (frame (selected-frame)))
-      (nskk-cursor-color-save frame)
-      (nskk--cursor-apply-color frame color))))
+    (let* ((mode (nskk-state-mode nskk-current-state))
+           (color (nskk--cursor-with-color mode))
+           (frame (selected-frame)))
+      (if color
+          (progn
+            (nskk-cursor-color-save frame)
+            (nskk--cursor-apply-color frame color))
+        (when (frame-parameter frame nskk--saved-cursor-color-parameter)
+          (nskk--cursor-color-restore-frame frame t))))))
 
 (defun nskk-cursor-color-save (&optional frame)
   "Save FRAME cursor color before NSKK changes it.
@@ -225,11 +219,12 @@ because this predicate is called while that buffer is being disabled."
                    (buffer-list))
          t)))
 
-(defun nskk--cursor-color-restore-frame (frame)
+(defun nskk--cursor-color-restore-frame (frame &optional force)
   "Restore FRAME's saved cursor color and clear NSKK's bookkeeping parameters.
-Does nothing while another active NSKK buffer is still displayed on FRAME."
+Does nothing while another active NSKK buffer is still displayed on FRAME,
+unless FORCE is non-nil because the current display requests no color."
   (let ((saved-color (frame-parameter frame nskk--saved-cursor-color-parameter)))
-    (unless (nskk--other-nskk-buffers-active-p frame)
+    (when (or force (not (nskk--other-nskk-buffers-active-p frame)))
       (when saved-color
         (set-frame-parameter frame 'cursor-color
                              (unless (eq saved-color t) saved-color)))

@@ -44,12 +44,12 @@
   (declare (indent 0) (debug t))
   `(nskk-prolog-test-with-isolated-db
      (let* ((nskk--saved-romaji-table (copy-hash-table (nskk-romaji-table)))
-            (nskk--azik-toggle-key
-             (if (and (boundp 'nskk-azik-keyboard-type)
-                      (eq nskk-azik-keyboard-type 'us101)) "[" "@"))
-            (nskk--azik-saved-binding
+            (nskk--azik-toggle-key-state nskk--azik-toggle-key-state)
+            (nskk--azik-saved-bindings
              (when (boundp 'nskk-mode-map)
-               (lookup-key nskk-mode-map nskk--azik-toggle-key))))
+               (mapcar (lambda (key)
+                         (cons key (lookup-key nskk-mode-map key)))
+                       '("@" "[")))))
        (unwind-protect
            (progn
              (nskk-converter-load-style 'azik)
@@ -57,11 +57,10 @@
          (clrhash (nskk-romaji-table))
          (maphash (lambda (k v) (puthash k v (nskk-romaji-table)))
                   nskk--saved-romaji-table)
-         (when (boundp 'nskk-mode-map)
-           (if nskk--azik-saved-binding
-               (keymap-set nskk-mode-map nskk--azik-toggle-key
-                           nskk--azik-saved-binding)
-             (keymap-unset nskk-mode-map nskk--azik-toggle-key t)))))))
+         (dolist (binding nskk--azik-saved-bindings)
+           (if (cdr binding)
+               (keymap-set nskk-mode-map (car binding) (cdr binding))
+             (keymap-unset nskk-mode-map (car binding) t)))))))
 
 (defmacro nskk-with-standard-style (&rest body)
   "Execute BODY with standard style loaded, restoring Prolog DB after."
@@ -92,7 +91,7 @@ NAME, GENERATORS, PROPERTY and RUNS carry the same meaning as in
   (declare (indent 3))
   (let ((runs-value (make-symbol "runs"))
         (failures (make-symbol "failures")))
-    `(ert-deftest ,(intern (format "nskk-property-%s" name)) ()
+    `(nskk-test-case ,(intern (format "nskk-property-%s" name))
        (nskk-with-azik-style
          (let ((,runs-value (or ,runs nskk-test-property-runs))
                (,failures nil))
@@ -118,7 +117,7 @@ NAME, DOMAIN and PROPERTY carry the same meaning as in
 identically."
   (declare (indent 2))
   (let ((domain-value (make-symbol "domain")))
-    `(ert-deftest ,(intern (format "nskk-exhaustive-%s" name)) ()
+    `(nskk-test-case ,(intern (format "nskk-exhaustive-%s" name))
        ,(format "Exhaustive property test: %s" name)
        (nskk-with-azik-style
          (let ((failures nil)
@@ -210,7 +209,8 @@ identically."
           (let ((nskk-azik-keyboard-type 'jp106))
             (nskk--setup-azik-toggle-key)
             (keymap-set nskk-mode-map "@" #'forward-char)
-            (nskk--setup-azik-toggle-key))
+            (nskk--setup-azik-toggle-key)
+            (should (eq (lookup-key nskk-mode-map "@") #'forward-char)))
           (let ((nskk-azik-keyboard-type 'us101))
             (nskk--setup-azik-toggle-key))
           (should (eq (lookup-key nskk-mode-map "@") #'forward-char))
@@ -1816,11 +1816,11 @@ identically."
           (maphash (lambda (k v) (puthash k v (nskk-romaji-table))) saved))))))
 
 (nskk-describe "azik-vowel-shadow/1 Prolog rule"
-  (nskk-it "holds for \"sh\" after AZIK init — vowel-only extensions"
+  (nskk-it "holds for \"sh\" after AZIK init with vowel-only extensions"
     (nskk-with-azik-style
       (should (nskk-prolog-holds-p '(azik-vowel-shadow "sh")))))
 
-  (nskk-it "holds for \"ch\" after AZIK init — vowel-only extensions"
+  (nskk-it "holds for \"ch\" after AZIK init with vowel-only extensions"
     (nskk-with-azik-style
       (should (nskk-prolog-holds-p '(azik-vowel-shadow "ch")))))
 
@@ -2229,6 +2229,76 @@ identically."
                                (nskk-prolog-database))
                       sentinel-before))
           (should (nskk-prolog-holds-p '(transaction-sentinel intact))))))))
+
+(nskk-describe "AZIK live customization"
+  (nskk-it "prioritizes common user rules across style roundtrips"
+    (nskk-test-with-azik-transaction-state
+     (let ((nskk-converter-user-rules '(("ka" . "共通") ("qqx" . "追加")))
+	   (nskk-azik-conversion-table '(("ka" "AZIK") ("qqy" "固有"))))
+       (dolist (style '(standard azik standard azik))
+	 (nskk-converter-load-style style)
+	 (should (equal (nskk-converter-lookup "ka") "共通"))
+	 (should (equal (nskk-prolog-query-value '(romaji-to-kana "ka" \?k) '\?k)
+			"共通"))
+	 (should (equal (nskk-converter-lookup "qqx") "追加"))
+	 (should (eq (nskk-converter-lookup "qq") :incomplete)))
+       (should (equal (nskk-converter-lookup "qqy") "固有"))
+       (should (equal (nskk-prolog-query-value '(azik-rule "qqy" \?k) '\?k)
+		      "固有"))
+       (should (member '((romaji-to-kana \?r \?k) (azik-rule \?r \?k))
+		       (gethash (nskk-prolog-clause-key 'romaji-to-kana 2)
+				(nskk-prolog-database))))
+       (setq nskk-converter-user-rules nil)
+       (nskk-converter-reload-style 'azik)
+       (should (equal (nskk-converter-lookup "ka") "AZIK")))))
+
+  (nskk-it "preserves user key replacements and removals when reloading rules"
+    (nskk-test-with-azik-transaction-state
+     (let ((nskk-converter-user-rules nil))
+       (nskk-converter-load-style 'azik)
+       (keymap-set nskk-mode-map "[" #'forward-char)
+       (setq nskk-converter-user-rules '(("ka" . "家")))
+       (nskk-converter-reload-style 'azik)
+       (should (eq (lookup-key nskk-mode-map "[") #'forward-char))
+       (keymap-unset nskk-mode-map "[" t)
+       (nskk-converter-reload-style 'azik)
+       (should-not (lookup-key nskk-mode-map "[")))))
+
+  (nskk-it "restores both helper toggle keys after a keyboard change"
+    (cl-progv '(nskk-mode-map nskk--azik-toggle-key-state
+			      nskk-azik-keyboard-type)
+        (list (make-sparse-keymap) '("@" . forward-char) 'us101)
+      (keymap-set nskk-mode-map "@" #'nskk-toggle-japanese-mode)
+      (keymap-set nskk-mode-map "[" #'backward-char)
+      (dolist (condition '(nil error quit))
+        (condition-case caught
+            (nskk-with-azik-style
+             (should (eq (lookup-key nskk-mode-map "[")
+                         #'nskk-toggle-japanese-mode))
+             (should (eq (lookup-key nskk-mode-map "@") #'forward-char))
+             (when condition (signal condition '("test cleanup"))))
+          ((error quit)
+           (should (equal caught (list condition "test cleanup")))))
+        (should (equal nskk--azik-toggle-key-state '("@" . forward-char)))
+        (should (eq (lookup-key nskk-mode-map "@")
+                    #'nskk-toggle-japanese-mode))
+        (should (eq (lookup-key nskk-mode-map "[") #'backward-char)))))
+
+  (nskk-it "restores helper toggle state after normal return error and quit"
+    (cl-progv '(nskk-mode-map nskk--azik-toggle-key-state
+			      nskk-azik-keyboard-type)
+	(list (make-sparse-keymap) nil 'jp106)
+      (keymap-set nskk-mode-map "@" #'forward-char)
+      (dolist (condition '(nil error quit))
+	(condition-case caught
+	    (nskk-with-azik-style
+	     (should (eq (lookup-key nskk-mode-map "@")
+			 #'nskk-toggle-japanese-mode))
+	     (when condition (signal condition '("test cleanup"))))
+	  ((error quit)
+	   (should (equal caught (list condition "test cleanup")))))
+	(should-not nskk--azik-toggle-key-state)
+	(should (eq (lookup-key nskk-mode-map "@") #'forward-char))))))
 
 (provide 'nskk-azik-test)
 

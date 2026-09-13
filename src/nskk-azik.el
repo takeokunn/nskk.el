@@ -383,9 +383,9 @@ Restores the displaced binding when the keyboard type changes."
         (if old-binding
             (keymap-set nskk-mode-map old-key old-binding)
           (keymap-unset nskk-mode-map old-key t)))
-      (let ((current (lookup-key nskk-mode-map key)))
-        (unless (and (equal old-key key) (eq current target))
-          (setq nskk--azik-toggle-key-state (cons key current)))
+      (unless (equal old-key key)
+        (setq nskk--azik-toggle-key-state
+              (cons key (lookup-key nskk-mode-map key)))
         (keymap-set nskk-mode-map key target)))))
 
 ;;;; Main Initialization
@@ -577,7 +577,6 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
   (nskk--azik-apply-user-overrides)
   (nskk--setup-azik-toggle-key))
 
-;; Register AZIK style
 (nskk-converter-register-style 'azik 'nskk--init-azik-rules)
 (nskk-converter-register-style-inputs
  'azik

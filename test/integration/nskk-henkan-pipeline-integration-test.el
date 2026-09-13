@@ -227,7 +227,7 @@
           (nskk-then
             (should (equal (buffer-string) before))))))))
 
-(ert-deftest nskk-henkan-numeric-literal-public-save-fresh-load ()
+(nskk-test-case nskk-henkan-numeric-literal-public-save-fresh-load
   "Persist literal identity at the actual reading, including after undo."
   (let* ((source (file-name-directory (symbol-file 'nskk-commit-current 'defun)))
          (directory (make-temp-file "nskk-literal-save-" t))

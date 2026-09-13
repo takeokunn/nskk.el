@@ -1,10 +1,11 @@
 ;;; nskk-dict-transaction-test.el --- Transaction API tests -*- lexical-binding: t; -*-
 
 (require 'ert)
+(require 'nskk-test-framework)
 (require 'nskk-dict-transaction)
 (require 'nskk-dictionary)
 
-(ert-deftest nskk-dict-transaction-snapshot-round-trip ()
+(nskk-test-case nskk-dict-transaction-snapshot-round-trip
   (nskk-prolog-retract-all 'nskk-transaction-test 2)
   (nskk-prolog-assert '((nskk-transaction-test "before" value)))
   (let ((snapshot (nskk-dict-transaction-predicate-snapshot
@@ -13,7 +14,7 @@
     (nskk-dict-transaction-apply-predicate-snapshot snapshot)
     (should (nskk-prolog-query '(nskk-transaction-test "before" value)))))
 
-(ert-deftest nskk-dict-transaction-rollback-resignals-primary ()
+(nskk-test-case nskk-dict-transaction-rollback-resignals-primary
   (let ((owner 'nskk-dict-transaction-test)
         (called nil))
     (should-error
@@ -23,7 +24,7 @@
      :type 'error)
     (should called)))
 
-(ert-deftest nskk-dict-transaction-failed-rollback-is-retained ()
+(nskk-test-case nskk-dict-transaction-failed-rollback-is-retained
   (let ((owner 'nskk-dict-transaction-failed-test))
     (should-error
      (nskk-dict-transaction-rollback-and-resignal
@@ -39,7 +40,7 @@
   "Return ENTRY unchanged, standing in for a caller's fact builder."
   entry)
 
-(ert-deftest nskk-dict-transaction-load-entries-wraps-empty-file ()
+(nskk-test-case nskk-dict-transaction-load-entries-wraps-empty-file
   "A valid file holding no entries is distinguishable from a skipped one."
   (let ((file (make-temp-file "nskk-tx-empty-")))
     (unwind-protect
@@ -52,14 +53,14 @@
             (should (null (cdr result)))))
       (delete-file file))))
 
-(ert-deftest nskk-dict-transaction-load-entries-skips-absent-file ()
+(nskk-test-case nskk-dict-transaction-load-entries-skips-absent-file
   "An absent file yields nil rather than an empty-entry wrapper."
   (should-not
    (nskk-dict-transaction-load-entries
     (expand-file-name "nskk-tx-absent" (make-temp-file "nskk-tx-dir-" t))
     4096 #'nskk-dict-transaction-test--identity-parser)))
 
-(ert-deftest nskk-dict-transaction-load-entries-reports-oversize ()
+(nskk-test-case nskk-dict-transaction-load-entries-reports-oversize
   "ON-OVERSIZE receives the observed size and suppresses the read."
   (let ((file (make-temp-file "nskk-tx-oversize-"))
         (reported nil))
@@ -74,7 +75,7 @@
           (should (> reported 2)))
       (delete-file file))))
 
-(ert-deftest nskk-dict-transaction-load-entries-signals-oversize-without-handler ()
+(nskk-test-case nskk-dict-transaction-load-entries-signals-oversize-without-handler
   "Without ON-OVERSIZE an excessive file is signaled, never silently skipped."
   (let ((file (make-temp-file "nskk-tx-oversize-signal-")))
     (unwind-protect
@@ -86,7 +87,7 @@
            :type 'error))
       (delete-file file))))
 
-(ert-deftest nskk-dict-transaction-load-entries-rejects-symlink ()
+(nskk-test-case nskk-dict-transaction-load-entries-rejects-symlink
   "A symbolic link is refused before any read."
   (let* ((directory (make-temp-file "nskk-tx-link-" t))
          (target (expand-file-name "target.dat" directory))
@@ -101,7 +102,7 @@
            :type 'error))
       (delete-directory directory t))))
 
-(ert-deftest nskk-dict-transaction-load-entries-rejects-post-stat-symlink ()
+(nskk-test-case nskk-dict-transaction-load-entries-rejects-post-stat-symlink
   "A file that turns into a symbolic link after the stat is refused.
 The assertion matches the recheck's own message rather than merely
 demanding some error: the pinned read re-validates the same property, so
@@ -134,7 +135,7 @@ a test that accepts any error passes even when the recheck is gone."
           (should-not read-called))
       (delete-file file))))
 
-(ert-deftest nskk-dict-transaction-load-entries-rejects-post-stat-non-regular ()
+(nskk-test-case nskk-dict-transaction-load-entries-rejects-post-stat-non-regular
   "A file that stops being regular after the stat is refused."
   (let ((file (make-temp-file "nskk-tx-post-stat-regular-"))
         (checks 0))
@@ -160,7 +161,7 @@ a test that accepts any error passes even when the recheck is gone."
 
 ;;; nskk-dict-transaction-publish-facts
 
-(ert-deftest nskk-dict-transaction-publish-facts-replaces-whole-predicate ()
+(nskk-test-case nskk-dict-transaction-publish-facts-replaces-whole-predicate
   "Publishing replaces every existing clause rather than adding to them."
   (nskk-prolog-retract-all 'nskk-publish-test 2)
   (nskk-prolog-assert '((nskk-publish-test "old" value)))
@@ -171,7 +172,7 @@ a test that accepts any error passes even when the recheck is gone."
   (should-not (nskk-prolog-holds-p '(nskk-publish-test "old" value)))
   (should (= 1 (length (nskk-prolog-query '(nskk-publish-test \?k \?v))))))
 
-(ert-deftest nskk-dict-transaction-publish-facts-runs-on-commit ()
+(nskk-test-case nskk-dict-transaction-publish-facts-runs-on-commit
   "ON-COMMIT runs once the facts have landed."
   (nskk-prolog-retract-all 'nskk-publish-commit-test 2)
   (let (observed)
@@ -183,7 +184,7 @@ a test that accepts any error passes even when the recheck is gone."
              (nskk-prolog-holds-p '(nskk-publish-commit-test "new" value)))))
     (should observed)))
 
-(ert-deftest nskk-dict-transaction-publish-facts-restores-clauses-on-error ()
+(nskk-test-case nskk-dict-transaction-publish-facts-restores-clauses-on-error
   "A failure mid-publication restores the original clauses."
   (nskk-prolog-retract-all 'nskk-publish-rollback-test 2)
   (nskk-prolog-assert '((nskk-publish-rollback-test "old" value)))
@@ -199,7 +200,7 @@ a test that accepts any error passes even when the recheck is gone."
       (should (equal before (nskk-dict-transaction-predicate-snapshot key)))
       (should (nskk-prolog-holds-p '(nskk-publish-rollback-test "old" value))))))
 
-(ert-deftest nskk-dict-transaction-publish-facts-runs-caller-rollback-actions ()
+(nskk-test-case nskk-dict-transaction-publish-facts-runs-caller-rollback-actions
   "Caller-supplied restorers run alongside the clause restore."
   (nskk-prolog-retract-all 'nskk-publish-actions-test 2)
   (nskk-prolog-assert '((nskk-publish-actions-test "old" value)))
@@ -217,7 +218,7 @@ a test that accepts any error passes even when the recheck is gone."
 
 ;;; nskk-dict-write-private-file
 
-(ert-deftest nskk-dict-write-private-file-creates-directory-privately ()
+(nskk-test-case nskk-dict-write-private-file-creates-directory-privately
   "A directory this code creates is unreadable by other users."
   (let* ((parent (make-temp-file "nskk-private-parent-" t))
          (target (expand-file-name "created/data.dat" parent)))
@@ -228,7 +229,7 @@ a test that accepts any error passes even when the recheck is gone."
           (should (equal (file-modes (file-name-directory target)) #o700)))
       (delete-directory parent t))))
 
-(ert-deftest nskk-dict-write-private-file-keeps-existing-directory-modes ()
+(nskk-test-case nskk-dict-write-private-file-keeps-existing-directory-modes
   "An existing directory keeps whatever modes it already had."
   (let* ((parent (make-temp-file "nskk-private-existing-" t))
          (directory (expand-file-name "existing" parent))
@@ -242,7 +243,7 @@ a test that accepts any error passes even when the recheck is gone."
           (should (equal (file-modes directory) #o755)))
       (delete-directory parent t))))
 
-(ert-deftest nskk-dict-write-private-file-round-trips-payload ()
+(nskk-test-case nskk-dict-write-private-file-round-trips-payload
   "The payload is written as the single serialized form the readers expect."
   (let* ((parent (make-temp-file "nskk-private-payload-" t))
          (target (expand-file-name "data.dat" parent))
@@ -256,7 +257,7 @@ a test that accepts any error passes even when the recheck is gone."
                            (read (current-buffer))))))
       (delete-directory parent t))))
 
-(ert-deftest nskk-dict-serialize-solutions-orders-variables ()
+(nskk-test-case nskk-dict-serialize-solutions-orders-variables
   "Each solution yields its variables in the order requested."
   (nskk-prolog-retract-all 'nskk-serialize-test 3)
   (nskk-prolog-assert '((nskk-serialize-test "a" "b" "c")))
@@ -264,7 +265,7 @@ a test that accepts any error passes even when the recheck is gone."
                   '(nskk-serialize-test \?x \?y \?z) '(\?z \?y \?x))
                  '(("c" "b" "a")))))
 
-(ert-deftest nskk-dict-transaction-input-end-tracks-reader-whitespace ()
+(nskk-test-case nskk-dict-transaction-input-end-tracks-reader-whitespace
   "Trailing bytes `read' skips must not fail a dictionary load.
 The reader skips every character up to and including space, plus
 NO_BREAK_SPACE, so a predicate narrower than that rejects files the reader
@@ -282,7 +283,7 @@ turns UTF-8 C2 A0 into one."
                      (cons trailing
                            (and (nskk-dict-transaction--at-input-end-p) t)))))))
 
-(ert-deftest nskk-dict-transaction-input-end-rejects-trailing-forms ()
+(nskk-test-case nskk-dict-transaction-input-end-rejects-trailing-forms
   "Anything the reader would parse as a further form must be rejected.
 The incomplete forms matter most: a second `read' signals `end-of-file' on
 them, which a handler that treats `end-of-file' as a clean end mistakes for

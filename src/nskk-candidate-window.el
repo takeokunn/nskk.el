@@ -46,6 +46,13 @@
   :prefix "nskk-candidate-"
   :group 'nskk-ui)
 
+(defcustom nskk-candidate-format-function #'nskk-candidate-format
+  "Function formatting a candidate page as an overlay after-string.
+Arguments are PAGE-CANDIDATES, selection KEYS, and REMAINING count.
+Changes are used on the next candidate operation."
+  :type 'function
+  :group 'nskk-candidate-window)
+
 ;;;; Prolog Candidate Key Selection Facts
 
 (defvar nskk--candidate-key-facts-initialized nil
@@ -53,7 +60,11 @@
 
 Guards against duplicate assertions on file reload (e.g. `eval-buffer').")
 
+(defvar nskk--candidate-key-facts-keys nil
+  "Selection keys currently represented by Prolog facts.")
+
 (nskk-prolog-<- (module-initialized-flag nskk--candidate-key-facts-initialized))
+(nskk-prolog-<- (module-initialized-flag nskk--candidate-key-facts-keys))
 
 (defun nskk--candidate-init-key-facts ()
   "Initialize Prolog facts for `candidate-selection-key'/2.
@@ -61,7 +72,9 @@ Guards against duplicate assertions on file reload (e.g. `eval-buffer').")
 Source: `nskk-henkan-show-candidates-keys'.
 Also registers uppercase variants for DDSKK compatibility.
 Idempotent: safe to call multiple times."
-  (unless nskk--candidate-key-facts-initialized
+  (unless (and nskk--candidate-key-facts-initialized
+               (equal nskk--candidate-key-facts-keys
+                      nskk-henkan-show-candidates-keys))
     (nskk-prolog-retract-all 'candidate-selection-key 2)
     (nskk-prolog-set-index 'candidate-selection-key 2 :hash)
     (cl-loop for k in nskk-henkan-show-candidates-keys
@@ -70,7 +83,9 @@ Idempotent: safe to call multiple times."
                 (let ((upper (upcase k)))
                   (unless (= upper k)
                     (nskk-prolog-assert `((candidate-selection-key ,upper ,i))))))
-    (setq nskk--candidate-key-facts-initialized t)))
+    (setq nskk--candidate-key-facts-initialized t
+          nskk--candidate-key-facts-keys
+          (copy-sequence nskk-henkan-show-candidates-keys))))
 
 (nskk--candidate-init-key-facts)
 
@@ -91,7 +106,7 @@ Idempotent: safe to call multiple times."
 
 ;;;; Overlay Display Helpers
 
-(defun nskk--candidate-build-string (page-candidates keys remaining)
+(defun nskk-candidate-format (page-candidates keys remaining)
   "Build the overlay after-string for PAGE-CANDIDATES.
 
 KEYS is the list of selection key characters.
@@ -108,6 +123,8 @@ Returns a string starting with \\n to appear below the preedit line."
          (suffix (when (> remaining 0) (format " [残り %d]" remaining))))
     (concat "\n" body suffix)))
 
+(defalias 'nskk--candidate-build-string #'nskk-candidate-format)
+
 (defun nskk--candidate-anchor-position ()
   "Return the buffer position to anchor the candidate overlay.
 Uses the end of the overlay returned by `nskk-state-conversion-overlay'
@@ -123,8 +140,8 @@ absent or deleted."
 START-INDEX is the 0-based index of the first candidate on this page.
 PER-PAGE is the maximum number of candidates per page.
 Returns a plist with:
-  :slice     — the sublist of CANDIDATES for this page
-  :remaining — count of candidates beyond this page"
+  :slice    : the sublist of CANDIDATES for this page
+  :remaining: count of candidates beyond this page"
   (let* ((page-end (min (+ start-index per-page) (length candidates)))
          (slice (cl-subseq candidates start-index page-end))
          (remaining (- (length candidates) page-end)))
@@ -184,7 +201,8 @@ signals an error."
          (page-candidates (plist-get page :slice)))
     (nskk--candidate-commit-overlay
      (nskk--candidate-anchor-position)
-     (nskk--candidate-build-string page-candidates keys (plist-get page :remaining)))
+     (funcall nskk-candidate-format-function page-candidates keys
+              (plist-get page :remaining)))
     (succeed page-candidates)))
 
 (defun/k nskk-candidate-list-active-p ()
@@ -202,6 +220,7 @@ CANDIDATES is the full candidate list; CURRENT-INDEX is the page start
 offset.  KEY is the character pressed.  Returns the selected index
 relative to the full CANDIDATES list, or nil if KEY is not a valid
 selection key or if the resulting index is out of range."
+  (nskk--candidate-init-key-facts)
   (let ((pos (nskk-prolog-query-value
               `(candidate-selection-key ,key ,'\?pos) '\?pos)))
     (if pos

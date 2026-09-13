@@ -81,8 +81,8 @@
 
 (nskk-describe "nskk-mode-map keymap"
   ;; These two do NOT establish that `nskk-mode-map' is a keymap:
-  ;; `(lookup-key nil (kbd "C-x C-j"))' returns 1 — a truthy partial-match code
-  ;; — rather than signalling, so both pass against a nil map.  That property is
+  ;; `(lookup-key nil (kbd "C-x C-j"))' returns 1, a truthy partial-match code,
+  ;; rather than signalling, so both pass against a nil map.  That property is
   ;; covered by "nskk-mode-map structural invariants" below and by
   ;; `main-keymap-bindings', whose `eq' fails on every row without a real map.
   (nskk-it "has C-x C-j binding"
@@ -307,13 +307,11 @@
       (should (= 1 (cl-count 'nskk--post-command-handler
                               (buffer-local-value 'post-command-hook (current-buffer)))))))
 
-  (nskk-it "collects commands reachable through both sub-keymaps and the top level"
+  (nskk-it "recognizes commands reachable through sub-keymaps and the top level"
     (with-temp-buffer
       (nskk--setup-buffer)
-      ;; nskk-toggle-mode is only reachable via the "C-x" sub-keymap of
-      ;; nskk-mode-map; nskk-kakutei is bound directly at the top level.
-      (should (memq 'nskk-toggle-mode nskk--bound-commands))
-      (should (memq 'nskk-kakutei nskk--bound-commands))))
+      (should (nskk--bound-command-p 'nskk-toggle-mode))
+      (should (nskk--bound-command-p 'nskk-kakutei))))
 
   (nskk-it "records the pre-command point via nskk--pre-command-handler"
     (with-temp-buffer
@@ -352,12 +350,8 @@
       (nskk--disable)
       (should (null nskk-current-state))))
 
-  (nskk-it "retains candidate resources until the last buffer disables"
+  (nskk-it "preserves explicit nil callbacks while multiple buffers disable"
     (let ((nskk--active-buffers nil)
-          (nskk--candidate-show-hook-owned nil)
-          (nskk--candidate-hide-hook-owned nil)
-          (nskk--candidate-select-function-owned nil)
-          (nskk--saved-candidate-select-function nil)
           (nskk-henkan-show-candidates-functions nil)
           (nskk-henkan-hide-candidates-functions nil)
           (nskk-henkan-select-candidate-by-key-function nil)
@@ -368,10 +362,9 @@
             (with-current-buffer a (nskk-mode 1))
             (with-current-buffer b (nskk-mode 1))
             (with-current-buffer a (nskk-mode -1))
-            (should (memq #'nskk-candidate-show-list
-                          nskk-henkan-show-candidates-functions))
-            (should (eq nskk-henkan-select-candidate-by-key-function
-                        #'nskk-candidate-list-select-by-key))
+            (should (equal nskk--active-buffers (list b)))
+            (should-not nskk-henkan-show-candidates-functions)
+            (should-not nskk-henkan-select-candidate-by-key-function)
             (with-current-buffer b (nskk-mode -1))
             (should-not nskk-henkan-show-candidates-functions)
             (should-not nskk-henkan-hide-candidates-functions)
@@ -379,12 +372,8 @@
         (when (buffer-live-p a) (kill-buffer a))
         (when (buffer-live-p b) (kill-buffer b)))))
 
-  (nskk-it "retains candidate resources when one active buffer is killed"
+  (nskk-it "preserves explicit nil callbacks when one active buffer is killed"
     (let ((nskk--active-buffers nil)
-          (nskk--candidate-show-hook-owned nil)
-          (nskk--candidate-hide-hook-owned nil)
-          (nskk--candidate-select-function-owned nil)
-          (nskk--saved-candidate-select-function nil)
           (nskk-henkan-show-candidates-functions nil)
           (nskk-henkan-hide-candidates-functions nil)
           (nskk-henkan-select-candidate-by-key-function nil)
@@ -395,8 +384,8 @@
             (with-current-buffer a (nskk-mode 1))
             (with-current-buffer b (nskk-mode 1))
             (kill-buffer b)
-            (should (memq #'nskk-candidate-show-list
-                          nskk-henkan-show-candidates-functions))
+            (should (equal nskk--active-buffers (list a)))
+            (should-not nskk-henkan-show-candidates-functions)
             (kill-buffer a)
             (should-not nskk-henkan-show-candidates-functions)
             (should-not nskk-henkan-select-candidate-by-key-function))
@@ -408,10 +397,6 @@
          (external-hide (lambda (&rest _)))
          (external-select (lambda (&rest _) 'external))
          (nskk--active-buffers nil)
-         (nskk--candidate-show-hook-owned nil)
-         (nskk--candidate-hide-hook-owned nil)
-         (nskk--candidate-select-function-owned nil)
-         (nskk--saved-candidate-select-function nil)
          (nskk-henkan-show-candidates-functions
           (list #'nskk-candidate-show-list external-show))
          (nskk-henkan-hide-candidates-functions
@@ -433,10 +418,6 @@
   (nskk-it "rolls back local and global resources when setup fails"
     (let* ((external-select (lambda (&rest _) 'external))
            (nskk--active-buffers nil)
-           (nskk--candidate-show-hook-owned nil)
-           (nskk--candidate-hide-hook-owned nil)
-           (nskk--candidate-select-function-owned nil)
-           (nskk--saved-candidate-select-function nil)
            (nskk-henkan-show-candidates-functions '(external-show))
            (nskk-henkan-hide-candidates-functions '(external-hide))
            (nskk-henkan-select-candidate-by-key-function external-select)
@@ -516,10 +497,6 @@
 (nskk-describe "nskk--handle-buffer-kill real effect"
   (nskk-it "releases NSKK state when the owning buffer is actually killed"
     (let ((nskk--active-buffers nil)
-          (nskk--candidate-show-hook-owned nil)
-          (nskk--candidate-hide-hook-owned nil)
-          (nskk--candidate-select-function-owned nil)
-          (nskk--saved-candidate-select-function nil)
           (buffer (generate-new-buffer " *nskk-kill-real*")))
       (unwind-protect
           (progn
@@ -601,11 +578,10 @@
         (should-not commit-called)))))
 
 (nskk-describe "nskk--post-command-preedit-guard behavior"
-  (nskk-it "fires when point moved and this-command is not in nskk--bound-commands"
+  (nskk-it "fires when point moved and this-command is not bound in the live keymap"
     (with-temp-buffer
       (insert "▽かんじ")   ; conv-start=1
       (let* ((nskk-current-state (nskk-state-create 'hiragana))
-             (nskk--bound-commands '(nskk-handle-space))
              (this-command 'some-unbound-movement-command)
              (kakutei-called nil))
         (nskk-state-force-henkan-phase nskk-current-state 'on)
@@ -617,11 +593,10 @@
           (nskk--post-command-preedit-guard))
         (should kakutei-called))))
 
-  (nskk-it "does not fire when this-command is in nskk--bound-commands"
+  (nskk-it "does not fire when this-command is bound in the live keymap"
     (with-temp-buffer
       (insert "▽かんじ")
       (let* ((nskk-current-state (nskk-state-create 'hiragana))
-             (nskk--bound-commands '(nskk-handle-space))
              (this-command 'nskk-handle-space)
              (kakutei-called nil))
         (nskk-state-force-henkan-phase nskk-current-state 'on)
@@ -637,7 +612,6 @@
     (with-temp-buffer
       (insert "▽かんじ")
       (let* ((nskk-current-state (nskk-state-create 'hiragana))
-             (nskk--bound-commands '(nskk-handle-space))
              (this-command 'some-unbound-movement-command)
              (kakutei-called nil))
         (nskk-state-force-henkan-phase nskk-current-state 'on)
@@ -653,10 +627,6 @@
   (nskk-it "restores mode, local state, resources, and per-frame cursor after a late failure"
     (let* ((external-select (lambda (&rest _) (quote external)))
            (nskk--active-buffers nil)
-           (nskk--candidate-show-hook-owned nil)
-           (nskk--candidate-hide-hook-owned nil)
-           (nskk--candidate-select-function-owned nil)
-           (nskk--saved-candidate-select-function nil)
            (nskk-use-color-cursor t)
            (nskk-henkan-show-candidates-functions (quote (external-show)))
            (nskk-henkan-hide-candidates-functions (quote (external-hide)))
@@ -722,484 +692,434 @@
 (define-error (quote nskk-test-teardown-error)
               "Injected NSKK teardown failure")
 
-(ert-deftest nskk-test/teardown-restores-all-changed-frame-cursors ()
-  "One buffer teardown restores every frame whose cursor it changed."
-  (let ((frame-a (quote frame-a))
-        (frame-b (quote frame-b))
-        (current-frame (quote frame-a))
-        (parameters (make-hash-table :test (function equal))))
-    (puthash (cons frame-a (quote cursor-color)) "red" parameters)
-    (puthash (cons frame-b (quote cursor-color)) "blue" parameters)
-    (with-temp-buffer
-      (setq-local nskk-mode t)
-      (setq-local nskk-current-state (nskk-state-create 'hiragana))
-      (cl-letf (((symbol-function (quote selected-frame))
-                 (lambda () current-frame))
-                ((symbol-function (quote frame-list))
-                 (lambda () (list frame-a frame-b)))
-                ((symbol-function (quote frame-parameter))
-                 (lambda (frame parameter)
-                   (gethash (cons frame parameter) parameters)))
-                ((symbol-function (quote set-frame-parameter))
-                 (lambda (frame parameter value)
-                   (if value
-                       (puthash (cons frame parameter) value parameters)
-                     (remhash (cons frame parameter) parameters))))
-                ((symbol-function (quote set-cursor-color))
-                 (lambda (color)
-                   (puthash
-                    (cons current-frame (quote cursor-color))
-                    color
-                    parameters)))
-                ((symbol-function (quote nskk-state-mode))
-                 (lambda (_) (quote hiragana)))
-                ((symbol-function (quote nskk--cursor-with-color))
-                 (lambda (_) "gold"))
-                ((symbol-function (quote nskk--other-nskk-buffers-active-p))
-                 (lambda (&optional _) nil))
-                ((symbol-function (quote nskk-clear-conversion-context))
-                 (function ignore))
-                ((symbol-function (quote nskk--cleanup-buffer))
-                 (function ignore))
-                ((symbol-function (quote nskk-show-mode-hide))
-                 (function ignore))
-                ((symbol-function (quote nskk--release-candidate-resources))
-                 (function ignore)))
-        (let ((nskk-use-color-cursor t))
-          (nskk-cursor-update)
-          (setq current-frame frame-b)
-          (nskk-cursor-update)
-          (nskk--teardown nil))))
-    (should
-     (equal (gethash (cons frame-a (quote cursor-color)) parameters) "red"))
-    (should
-     (equal (gethash (cons frame-b (quote cursor-color)) parameters) "blue"))
-    (dolist (frame (list frame-a frame-b))
-      (should-not
-       (gethash (cons frame nskk--saved-cursor-color-parameter) parameters))
-      (should-not
-       (gethash (cons frame nskk--last-cursor-color-parameter) parameters)))))
-
-
-(ert-deftest nskk-test/disable-completes-cleanup-before-resignaling ()
-  "Failing off hooks do not block later hooks, cleanup, or prior conditions."
-  (let ((nskk--active-buffers nil)
-        (nskk--candidate-show-hook-owned nil)
-        (nskk--candidate-hide-hook-owned nil)
-        (nskk--candidate-select-function-owned nil)
-        (nskk--saved-candidate-select-function nil)
-        (nskk-mode-off-hook nil)
-        (observer-calls 0))
-    (add-hook 'nskk-mode-off-hook
-              (lambda () (cl-incf observer-calls)))
-    (with-temp-buffer
-      (nskk-mode 1)
-      (nskk-show-mode-set-overlay (make-overlay (point) (point)))
-      (nskk-show-mode-set-timer (run-with-timer 60 nil #'ignore))
-      (let ((timer (nskk-show-mode-timer)))
-        (add-hook
-         'nskk-mode-off-hook
-         (lambda ()
-           (signal 'nskk-test-teardown-error '(original-payload)))
-         nil
-         t)
-        (should
-         (equal
-          (should-error (nskk-mode -1) :type 'nskk-test-teardown-error)
-          '(nskk-test-teardown-error original-payload)))
-        (should (= observer-calls 1))
-        (should-not nskk-mode)
-        (should-not nskk-current-state)
-        (should-not (nskk-show-mode-overlay))
-        (should-not (nskk-show-mode-timer))
-        (should-not (memq timer timer-list))
-        (should-not (memq #'nskk--pre-command-handler pre-command-hook))
-        (should-not (memq #'nskk--post-command-handler post-command-hook))
+(nskk-describe "nskk lifecycle transactions"
+  (nskk-it "restores every changed frame cursor during teardown"
+    (let ((frame-a (quote frame-a))
+          (frame-b (quote frame-b))
+          (current-frame (quote frame-a))
+          (parameters (make-hash-table :test (function equal))))
+      (puthash (cons frame-a (quote cursor-color)) "red" parameters)
+      (puthash (cons frame-b (quote cursor-color)) "blue" parameters)
+      (with-temp-buffer
+        (setq-local nskk-mode t)
+        (setq-local nskk-current-state (nskk-state-create 'hiragana))
+        (cl-letf (((symbol-function (quote selected-frame))
+                   (lambda () current-frame))
+                  ((symbol-function (quote frame-list))
+                   (lambda () (list frame-a frame-b)))
+                  ((symbol-function (quote frame-parameter))
+                   (lambda (frame parameter)
+                     (gethash (cons frame parameter) parameters)))
+                  ((symbol-function (quote set-frame-parameter))
+                   (lambda (frame parameter value)
+                     (if value
+                         (puthash (cons frame parameter) value parameters)
+                       (remhash (cons frame parameter) parameters))))
+                  ((symbol-function (quote set-cursor-color))
+                   (lambda (color)
+                     (puthash
+                      (cons current-frame (quote cursor-color))
+                      color
+                      parameters)))
+                  ((symbol-function (quote nskk-state-mode))
+                   (lambda (_) (quote hiragana)))
+                  ((symbol-function (quote nskk--cursor-with-color))
+                   (lambda (_) "gold"))
+                  ((symbol-function (quote nskk--other-nskk-buffers-active-p))
+                   (lambda (&optional _) nil))
+                  ((symbol-function (quote nskk-clear-conversion-context))
+                   (function ignore))
+                  ((symbol-function (quote nskk--cleanup-buffer))
+                   (function ignore))
+                  ((symbol-function (quote nskk-show-mode-hide))
+                   (function ignore))
+                  ((symbol-function (quote nskk--release-candidate-resources))
+                   (function ignore)))
+          (let ((nskk-use-color-cursor t))
+            (nskk-cursor-update)
+            (setq current-frame frame-b)
+            (nskk-cursor-update)
+            (nskk--teardown nil))))
+      (should
+       (equal (gethash (cons frame-a (quote cursor-color)) parameters) "red"))
+      (should
+       (equal (gethash (cons frame-b (quote cursor-color)) parameters) "blue"))
+      (dolist (frame (list frame-a frame-b))
         (should-not
-         (memq #'nskk-completion-at-point completion-at-point-functions))
-        (should-not (memq (current-buffer) nskk--active-buffers))
-        (should-not (memq #'nskk--handle-buffer-kill kill-buffer-hook))
+         (gethash (cons frame nskk--saved-cursor-color-parameter) parameters))
         (should-not
-         (memq #'nskk--handle-major-mode-change change-major-mode-hook))))
-    (with-temp-buffer
-      (setq-local nskk-mode t)
-      (add-hook
-       'nskk-mode-off-hook
-       (lambda () (signal 'error '(later-hook-payload)))
-       nil
-       t)
-      (cl-letf (((symbol-function 'nskk-clear-conversion-context)
-                 (lambda ()
-                   (signal 'nskk-test-teardown-error '(earlier-payload)))))
-        (should
-         (equal
-          (should-error (nskk--teardown t)
-                        :type 'nskk-test-teardown-error)
-          '(nskk-test-teardown-error earlier-payload))))
-      (should (= observer-calls 2))
-      (should-not nskk-mode)
-      (should-not nskk-current-state))))
+         (gethash (cons frame nskk--last-cursor-color-parameter) parameters)))))
 
-(ert-deftest nskk-test/teardown-cursor-color-restore-failure-wins-first ()
-  "A cursor-color-restore failure is rethrown even when a later step also fails."
-  (let ((nskk--active-buffers nil)
-        (nskk--candidate-show-hook-owned nil)
-        (nskk--candidate-hide-hook-owned nil)
-        (nskk--candidate-select-function-owned nil)
-        (nskk--saved-candidate-select-function nil)
-        (cleanup-buffer-called nil))
-    (with-temp-buffer
-      (nskk-mode 1)
-      (cl-letf (((symbol-function 'nskk-cursor-color-restore)
-                 (lambda (&rest _)
-                   (signal 'nskk-test-teardown-error '(cursor-payload))))
-                ((symbol-function 'nskk--cleanup-buffer)
-                 (lambda ()
-                   (setq cleanup-buffer-called t)
-                   (signal 'error '(cleanup-payload)))))
-        (should
-         (equal
-          (should-error (nskk--teardown nil) :type 'nskk-test-teardown-error)
-          '(nskk-test-teardown-error cursor-payload))))
-      (should cleanup-buffer-called)
-      (should-not nskk-mode)
-      (should-not nskk-current-state))))
 
-(ert-deftest nskk-test/teardown-cleanup-buffer-failure-wins-first ()
-  "A nskk--cleanup-buffer failure is rethrown even when a later step also fails."
-  (let ((nskk--active-buffers nil)
-        (nskk--candidate-show-hook-owned nil)
-        (nskk--candidate-hide-hook-owned nil)
-        (nskk--candidate-select-function-owned nil)
-        (nskk--saved-candidate-select-function nil)
-        (release-called nil))
-    (with-temp-buffer
-      (nskk-mode 1)
-      (cl-letf (((symbol-function 'nskk--cleanup-buffer)
-                 (lambda ()
-                   (signal 'nskk-test-teardown-error '(cleanup-payload))))
-                ((symbol-function 'nskk--release-candidate-resources)
-                 (lambda ()
-                   (setq release-called t)
-                   (signal 'error '(release-payload)))))
-        (should
-         (equal
-          (should-error (nskk--teardown nil) :type 'nskk-test-teardown-error)
-          '(nskk-test-teardown-error cleanup-payload))))
-      (should release-called)
-      (should-not nskk-mode)
-      (should-not nskk-current-state))))
-
-(ert-deftest nskk-test/rollback-step-failure-does-not-replace-activation-error ()
-  "A rollback step that itself signals must not displace the activation error.
-`nskk--rollback-activation' documents this: the caller is waiting for the
-condition that aborted activation, not for whatever went wrong while undoing
-it.  Injecting a failure into the last restore step is what distinguishes the
-two, since that step runs through ATTEMPT and is therefore swallowed."
-  (let ((nskk--active-buffers nil)
-        (nskk--candidate-show-hook-owned nil)
-        (nskk--candidate-hide-hook-owned nil)
-        (nskk--candidate-select-function-owned nil)
-        (nskk--saved-candidate-select-function nil)
-        (restore-step-ran nil))
-    (with-temp-buffer
-      (cl-letf (((symbol-function 'nskk-modeline-update)
-                 (lambda (&rest _)
-                   (signal 'nskk-test-teardown-error '(activation-payload))))
-                ((symbol-function 'nskk--restore-buffer-snapshot)
-                 (lambda (&rest _)
-                   (setq restore-step-ran t)
-                   (signal 'error '(rollback-payload)))))
-        (should
-         (equal
-          (should-error (nskk-mode 1) :type 'nskk-test-teardown-error)
-          '(nskk-test-teardown-error activation-payload))))
-      (should restore-step-ran))))
-
-(ert-deftest nskk-test/major-mode-change-runs-full-teardown ()
-  "Changing major mode must release NSKK resources."
-  (let ((nskk--active-buffers nil)
-        (nskk--candidate-show-hook-owned nil)
-        (nskk--candidate-hide-hook-owned nil)
-        (nskk--candidate-select-function-owned nil)
-        (nskk--saved-candidate-select-function nil))
-    (with-temp-buffer
-      (let ((buffer (current-buffer)))
+  (nskk-it "completes cleanup before resignaling the first off hook failure"
+    (let ((nskk--active-buffers nil)
+          (nskk-mode-off-hook nil)
+          (observer-calls 0))
+      (add-hook 'nskk-mode-off-hook
+                (lambda () (cl-incf observer-calls)))
+      (with-temp-buffer
         (nskk-mode 1)
         (nskk-show-mode-set-overlay (make-overlay (point) (point)))
         (nskk-show-mode-set-timer (run-with-timer 60 nil #'ignore))
         (let ((timer (nskk-show-mode-timer)))
-          (fundamental-mode)
+          (add-hook
+           'nskk-mode-off-hook
+           (lambda ()
+             (signal 'nskk-test-teardown-error '(original-payload)))
+           nil
+           t)
+          (should
+           (equal
+            (should-error (nskk-mode -1) :type 'nskk-test-teardown-error)
+            '(nskk-test-teardown-error original-payload)))
+          (should (= observer-calls 1))
+          (should-not nskk-mode)
           (should-not nskk-current-state)
           (should-not (nskk-show-mode-overlay))
           (should-not (nskk-show-mode-timer))
           (should-not (memq timer timer-list))
-          (should-not (memq buffer nskk--active-buffers)))))))
-
-(ert-deftest nskk-test/kill-emacs-save-respects-persistence-inhibition ()
-  "The kill-emacs save hook must be inert during a transaction."
-  (let ((nskk--persistence-inhibited t)
-        (calls nil))
-    (cl-letf (((symbol-function 'nskk-search-save-learning-data)
-               (lambda () (push 'search calls)))
-              ((symbol-function 'nskk-study-save)
-               (lambda () (push 'study calls)))
-              ((symbol-function 'featurep)
-               (lambda (feature)
-                 (eq feature 'nskk-study))))
-      (nskk--save-learning-data))
-    (should-not calls)))
-
-(ert-deftest nskk-test/disable-completes-cleanup-after-quit ()
-  "A quitting off hook does not block later hooks or mandatory teardown."
-  (let ((nskk--active-buffers nil)
-        (nskk--candidate-show-hook-owned nil)
-        (nskk--candidate-hide-hook-owned nil)
-        (nskk--candidate-select-function-owned nil)
-        (nskk--saved-candidate-select-function nil)
-        (nskk-mode-off-hook nil)
-        (observer-calls 0))
-    (add-hook 'nskk-mode-off-hook
-              (lambda () (cl-incf observer-calls)))
-    (with-temp-buffer
-      (nskk-mode 1)
-      (nskk-show-mode-set-overlay (make-overlay (point) (point)))
-      (nskk-show-mode-set-timer (run-with-timer 60 nil #'ignore))
-      (let ((timer (nskk-show-mode-timer))
-            condition-data)
+          (should-not (memq #'nskk--pre-command-handler pre-command-hook))
+          (should-not (memq #'nskk--post-command-handler post-command-hook))
+          (should-not
+           (memq #'nskk-completion-at-point completion-at-point-functions))
+          (should-not (memq (current-buffer) nskk--active-buffers))
+          (should-not (memq #'nskk--handle-buffer-kill kill-buffer-hook))
+          (should-not
+           (memq #'nskk--handle-major-mode-change change-major-mode-hook))))
+      (with-temp-buffer
+        (setq-local nskk-mode t)
         (add-hook
          'nskk-mode-off-hook
-         (lambda () (signal 'quit '(original-payload)))
+         (lambda () (signal 'error '(later-hook-payload)))
          nil
          t)
-        (setq condition-data
-              (condition-case data
-                  (progn
-                    (nskk-mode -1)
-                    nil)
-                (quit data)))
-        (should (equal condition-data '(quit original-payload)))
-        (should (= observer-calls 1))
+        (cl-letf (((symbol-function 'nskk-clear-conversion-context)
+                   (lambda ()
+                     (signal 'nskk-test-teardown-error '(earlier-payload)))))
+          (should
+           (equal
+            (should-error (nskk--teardown t)
+                          :type 'nskk-test-teardown-error)
+            '(nskk-test-teardown-error earlier-payload))))
+        (should (= observer-calls 2))
+        (should-not nskk-mode)
+        (should-not nskk-current-state))))
+
+  (nskk-it "preserves the cursor restoration error when later cleanup fails"
+    (let ((nskk--active-buffers nil)
+          (cleanup-buffer-called nil))
+      (with-temp-buffer
+        (nskk-mode 1)
+        (cl-letf (((symbol-function 'nskk-cursor-color-restore)
+                   (lambda (&rest _)
+                     (signal 'nskk-test-teardown-error '(cursor-payload))))
+                  ((symbol-function 'nskk--cleanup-buffer)
+                   (lambda ()
+                     (setq cleanup-buffer-called t)
+                     (signal 'error '(cleanup-payload)))))
+          (should
+           (equal
+            (should-error (nskk--teardown nil) :type 'nskk-test-teardown-error)
+            '(nskk-test-teardown-error cursor-payload))))
+        (should cleanup-buffer-called)
+        (should-not nskk-mode)
+        (should-not nskk-current-state))))
+
+  (nskk-it "preserves the buffer cleanup error when resource release fails"
+    (let ((nskk--active-buffers nil)
+          (release-called nil))
+      (with-temp-buffer
+        (nskk-mode 1)
+        (cl-letf (((symbol-function 'nskk--cleanup-buffer)
+                   (lambda ()
+                     (signal 'nskk-test-teardown-error '(cleanup-payload))))
+                  ((symbol-function 'nskk--release-candidate-resources)
+                   (lambda ()
+                     (setq release-called t)
+                     (signal 'error '(release-payload)))))
+          (should
+           (equal
+            (should-error (nskk--teardown nil) :type 'nskk-test-teardown-error)
+            '(nskk-test-teardown-error cleanup-payload))))
+        (should release-called)
+        (should-not nskk-mode)
+        (should-not nskk-current-state))))
+
+  (nskk-it "preserves the activation error when rollback also fails"
+    (let ((nskk--active-buffers nil)
+          (restore-step-ran nil))
+      (with-temp-buffer
+        (cl-letf (((symbol-function 'nskk-modeline-update)
+                   (lambda (&rest _)
+                     (signal 'nskk-test-teardown-error '(activation-payload))))
+                  ((symbol-function 'nskk--restore-buffer-snapshot)
+                   (lambda (&rest _)
+                     (setq restore-step-ran t)
+                     (signal 'error '(rollback-payload)))))
+          (should
+           (equal
+            (should-error (nskk-mode 1) :type 'nskk-test-teardown-error)
+            '(nskk-test-teardown-error activation-payload))))
+        (should restore-step-ran))))
+
+  (nskk-it "releases NSKK resources when the major mode changes"
+    (let ((nskk--active-buffers nil))
+      (with-temp-buffer
+        (let ((buffer (current-buffer)))
+          (nskk-mode 1)
+          (nskk-show-mode-set-overlay (make-overlay (point) (point)))
+          (nskk-show-mode-set-timer (run-with-timer 60 nil #'ignore))
+          (let ((timer (nskk-show-mode-timer)))
+            (fundamental-mode)
+            (should-not nskk-current-state)
+            (should-not (nskk-show-mode-overlay))
+            (should-not (nskk-show-mode-timer))
+            (should-not (memq timer timer-list))
+            (should-not (memq buffer nskk--active-buffers)))))))
+
+  (nskk-it "inhibits kill-emacs persistence during a transaction"
+    (let ((nskk--persistence-inhibited t)
+          (calls nil))
+      (cl-letf (((symbol-function 'nskk-search-save-learning-data)
+                 (lambda () (push 'search calls)))
+                ((symbol-function 'nskk-study-save)
+                 (lambda () (push 'study calls)))
+                ((symbol-function 'featurep)
+                 (lambda (feature)
+                   (eq feature 'nskk-study))))
+        (nskk--save-learning-data))
+      (should-not calls)))
+
+  (nskk-it "completes hooks and cleanup after an off hook quits"
+    (let ((nskk--active-buffers nil)
+          (nskk-mode-off-hook nil)
+          (observer-calls 0))
+      (add-hook 'nskk-mode-off-hook
+                (lambda () (cl-incf observer-calls)))
+      (with-temp-buffer
+        (nskk-mode 1)
+        (nskk-show-mode-set-overlay (make-overlay (point) (point)))
+        (nskk-show-mode-set-timer (run-with-timer 60 nil #'ignore))
+        (let ((timer (nskk-show-mode-timer))
+              condition-data)
+          (add-hook
+           'nskk-mode-off-hook
+           (lambda () (signal 'quit '(original-payload)))
+           nil
+           t)
+          (setq condition-data
+                (condition-case data
+                    (progn
+                      (nskk-mode -1)
+                      nil)
+                  (quit data)))
+          (should (equal condition-data '(quit original-payload)))
+          (should (= observer-calls 1))
+          (should-not nskk-mode)
+          (should-not nskk-current-state)
+          (should-not (nskk-show-mode-overlay))
+          (should-not (nskk-show-mode-timer))
+          (should-not (memq timer timer-list))
+          (should-not (memq #'nskk--pre-command-handler pre-command-hook))
+          (should-not (memq #'nskk--post-command-handler post-command-hook))
+          (should-not
+           (memq #'nskk-completion-at-point completion-at-point-functions))
+          (should-not (memq (current-buffer) nskk--active-buffers))
+          (should-not (memq #'nskk--handle-buffer-kill kill-buffer-hook))
+          (should-not
+           (memq #'nskk--handle-major-mode-change change-major-mode-hook))))))
+  (nskk-it "restores local and global resources when activation quits"
+    (let* ((external-select (lambda (&rest _) 'external))
+           (nskk--active-buffers nil)
+           (nskk-henkan-show-candidates-functions '(external-show))
+           (nskk-henkan-hide-candidates-functions '(external-hide))
+           (nskk-henkan-select-candidate-by-key-function external-select)
+           (kill-emacs-hook '(external-exit))
+           condition-data)
+      (with-temp-buffer
+        (setq-local pre-command-hook '(external-pre)
+                    post-command-hook '(external-post)
+                    completion-at-point-functions '(external-capf)
+                    kill-buffer-hook '(external-kill))
+        (cl-letf (((symbol-function 'nskk--setup-buffer)
+                   (lambda () (signal 'quit '(enable-payload)))))
+          (setq condition-data
+                (condition-case data
+                    (progn (nskk-mode 1) nil)
+                  (quit data))))
+        (should (equal condition-data '(quit enable-payload)))
         (should-not nskk-mode)
         (should-not nskk-current-state)
-        (should-not (nskk-show-mode-overlay))
-        (should-not (nskk-show-mode-timer))
-        (should-not (memq timer timer-list))
-        (should-not (memq #'nskk--pre-command-handler pre-command-hook))
-        (should-not (memq #'nskk--post-command-handler post-command-hook))
-        (should-not
-         (memq #'nskk-completion-at-point completion-at-point-functions))
+        (should (equal pre-command-hook '(external-pre)))
+        (should (equal post-command-hook '(external-post)))
+        (should (equal completion-at-point-functions '(external-capf)))
+        (should (equal kill-buffer-hook '(external-kill)))
+        (should-not nskk--active-buffers))
+      (should (equal nskk-henkan-show-candidates-functions
+                     '(external-show)))
+      (should (equal nskk-henkan-hide-candidates-functions
+                     '(external-hide)))
+      (should (eq nskk-henkan-select-candidate-by-key-function
+                  external-select))
+      (should (equal kill-emacs-hook '(external-exit)))))
+
+  (nskk-it "rejects resource reacquisition from an off hook"
+    (let ((nskk--active-buffers nil))
+      (with-temp-buffer
+        (nskk-mode 1)
+        (add-hook 'nskk-mode-off-hook (lambda () (nskk-mode 1)) nil t)
+        (should-error (nskk-mode -1) :type 'user-error)
+        (should-not nskk-mode)
+        (should-not nskk-current-state)
         (should-not (memq (current-buffer) nskk--active-buffers))
         (should-not (memq #'nskk--handle-buffer-kill kill-buffer-hook))
-        (should-not
-         (memq #'nskk--handle-major-mode-change change-major-mode-hook))))))
-(ert-deftest nskk-test/enable-quit-restores-complete-snapshot ()
-  "QUIT during enable restores local and process-global resources."
-  (let* ((external-select (lambda (&rest _) 'external))
-         (nskk--active-buffers nil)
-         (nskk--candidate-show-hook-owned nil)
-         (nskk--candidate-hide-hook-owned nil)
-         (nskk--candidate-select-function-owned nil)
-         (nskk--saved-candidate-select-function nil)
-         (nskk-henkan-show-candidates-functions '(external-show))
-         (nskk-henkan-hide-candidates-functions '(external-hide))
-         (nskk-henkan-select-candidate-by-key-function external-select)
-         (kill-emacs-hook '(external-exit))
-         condition-data)
-    (with-temp-buffer
-      (setq-local pre-command-hook '(external-pre)
-                  post-command-hook '(external-post)
-                  completion-at-point-functions '(external-capf)
-                  kill-buffer-hook '(external-kill))
-      (cl-letf (((symbol-function 'nskk--setup-buffer)
-                 (lambda () (signal 'quit '(enable-payload)))))
-        (setq condition-data
-              (condition-case data
-                  (progn (nskk-mode 1) nil)
-                (quit data))))
-      (should (equal condition-data '(quit enable-payload)))
-      (should-not nskk-mode)
-      (should-not nskk-current-state)
-      (should (equal pre-command-hook '(external-pre)))
-      (should (equal post-command-hook '(external-post)))
-      (should (equal completion-at-point-functions '(external-capf)))
-      (should (equal kill-buffer-hook '(external-kill)))
-      (should-not nskk--active-buffers))
-    (should (equal nskk-henkan-show-candidates-functions
-                   '(external-show)))
-    (should (equal nskk-henkan-hide-candidates-functions
-                   '(external-hide)))
-    (should (eq nskk-henkan-select-candidate-by-key-function
-                external-select))
-    (should (equal kill-emacs-hook '(external-exit)))))
+        (should-not (memq #'nskk--handle-major-mode-change
+                          change-major-mode-hook)))))
 
-(ert-deftest nskk-test/teardown-rejects-off-hook-reenable ()
-  "An off hook cannot reacquire resources during teardown."
-  (let ((nskk--active-buffers nil)
-        (nskk--candidate-show-hook-owned nil)
-        (nskk--candidate-hide-hook-owned nil)
-        (nskk--candidate-select-function-owned nil)
-        (nskk--saved-candidate-select-function nil))
-    (with-temp-buffer
-      (nskk-mode 1)
-      (add-hook 'nskk-mode-off-hook (lambda () (nskk-mode 1)) nil t)
-      (should-error (nskk-mode -1) :type 'user-error)
-      (should-not nskk-mode)
-      (should-not nskk-current-state)
-      (should-not (memq (current-buffer) nskk--active-buffers))
-      (should-not (memq #'nskk--handle-buffer-kill kill-buffer-hook))
-      (should-not (memq #'nskk--handle-major-mode-change
-                        change-major-mode-hook)))))
-
-(ert-deftest nskk-test/enable-restores-isearch-resource-snapshot ()
-  "Every enable stage restores mode locality and isearch ownership exactly."
-  (let ((saved-isearch-state (nskk--isearch-transaction-state))
-        (saved-watcher-state (nskk--isearch-watcher-state))
-        (saved-default-mode (default-value 'nskk-mode))
-        (stage-specs
-         '((nskk-state-initialize-prolog (nil nil nil))
-           (nskk-kana-initialize (nil nil t))
-           (nskk-converter-initialize (nil t nil))
-           (nskk-henkan-initialize (nil t t))
-           (nskk-input-initialize (t nil nil))
-           (nskk--acquire-candidate-resources (t nil t))
-           (nskk-isearch-setup (t t nil))
-           (nskk-maybe-load-azik-style (t t t))))
-        (case-count 0))
-    (unwind-protect
-        (dolist (initial-mode-value '(nil t))
-          (dolist (local-binding '(nil t))
-            (dolist (condition '(error quit))
-              (progn (dolist (cleanup-timing '(before after)) (cl-loop
-                                                               for (stage resource-state) in stage-specs
-                                                               for stage-index from 0
-                                                               do
-                                                               (cl-incf case-count)
-                                                               (let* ((default-mode-value
-                                                                       (if local-binding
-                                                                           (not initial-mode-value)
-                                                                         initial-mode-value))
-                                                                      (ownership-state
-                                                                       (mapcar (lambda (present)
-                                                                                 (and present initial-mode-value))
-                                                                               resource-state))
-                                                                      (watcher-present (zerop (% stage-index 2)))
-                                                                      (watcher-state
-                                                                       (list watcher-present
-                                                                             (and watcher-present local-binding)))
-                                                                      (payload
-                                                                       (list 'enable-payload stage-index
-                                                                             initial-mode-value local-binding
-                                                                             cleanup-timing))
-                                                                      (primary-data (list payload))
-                                                                      (cleanup-condition
-                                                                       (if (eq condition 'error) 'quit 'error))
-                                                                      (cleanup-payload
-                                                                       (list 'cleanup-payload stage-index
-                                                                             cleanup-timing))
-                                                                      (original-stage (symbol-function stage))
-                                                                      (original-restore
-                                                                       (symbol-function
-                                                                        'nskk--isearch-restore-transaction-state))
-                                                                      (nskk-isearch-enable t)
-                                                                      (nskk--active-buffers nil)
-                                                                      (nskk--candidate-show-hook-owned nil)
-                                                                      (nskk--candidate-hide-hook-owned nil)
-                                                                      (nskk--candidate-select-function-owned nil)
-                                                                      (nskk--saved-candidate-select-function nil)
-                                                                      (nskk-henkan-show-candidates-functions nil)
-                                                                      (nskk-henkan-hide-candidates-functions nil)
-                                                                      (nskk-henkan-select-candidate-by-key-function nil)
-                                                                      (kill-emacs-hook nil)
-                                                                      (nskk--learning-loaded nil)
-                                                                      (nskk-search-auto-save-learning nil)
-                                                                      stage-fired cleanup-fired caught)
-                                                                 (set-default 'nskk-mode default-mode-value)
-                                                                 (nskk--isearch-restore-transaction-state
-                                                                  (list resource-state ownership-state))
-                                                                 (nskk--isearch-restore-watcher-state watcher-state)
-                                                                 (with-temp-buffer
-                                                                   (if local-binding
-                                                                       (setq-local nskk-mode initial-mode-value)
-                                                                     (kill-local-variable 'nskk-mode))
-                                                                   (setq-local
-                                                                    local-minor-modes
-                                                                    (if initial-mode-value
-                                                                        (cons 'nskk-mode
-                                                                              (delq 'nskk-mode local-minor-modes))
-                                                                      (delq 'nskk-mode local-minor-modes)))
-                                                                   (let ((initial-minor-membership
-                                                                          (and (memq 'nskk-mode local-minor-modes) t)))
-                                                                     (unwind-protect
-                                                                         (progn
-                                                                           (setq
-                                                                            caught
-                                                                            (cl-letf
-                                                                                (((symbol-function stage)
-                                                                                  (lambda (&rest arguments)
-                                                                                    (apply original-stage arguments)
-                                                                                    (setq stage-fired t)
-                                                                                    (signal condition primary-data)))
-                                                                                 ((symbol-function
-                                                                                   'nskk--isearch-restore-transaction-state)
-                                                                                  (lambda (state)
-                                                                                    (if cleanup-fired
-                                                                                        (funcall original-restore state)
-                                                                                      (setq cleanup-fired t)
-                                                                                      (if (eq cleanup-timing 'before)
+  (nskk-it "restores mode locality and isearch ownership at every enable stage"
+    (let ((saved-isearch-state (nskk--isearch-transaction-state))
+          (saved-watcher-state (nskk--isearch-watcher-state))
+          (saved-default-mode (default-value 'nskk-mode))
+          (stage-specs
+           '((nskk-state-initialize-prolog (nil nil nil))
+             (nskk-kana-initialize (nil nil t))
+             (nskk-converter-initialize (nil t nil))
+             (nskk-henkan-initialize (nil t t))
+             (nskk-input-initialize (t nil nil))
+             (nskk--acquire-candidate-resources (t nil t))
+             (nskk-isearch-setup (t t nil))
+             (nskk-maybe-load-azik-style (t t t))))
+          (case-count 0))
+      (unwind-protect
+          (dolist (initial-mode-value '(nil t))
+            (dolist (local-binding '(nil t))
+              (dolist (condition '(error quit))
+                (progn (dolist (cleanup-timing '(before after)) (cl-loop
+                                                                 for (stage resource-state) in stage-specs
+                                                                 for stage-index from 0
+                                                                 do
+                                                                 (cl-incf case-count)
+                                                                 (let* ((default-mode-value
+                                                                         (if local-binding
+                                                                             (not initial-mode-value)
+                                                                           initial-mode-value))
+                                                                        (ownership-state
+                                                                         (mapcar (lambda (present)
+                                                                                   (and present initial-mode-value))
+                                                                                 resource-state))
+                                                                        (watcher-present (zerop (% stage-index 2)))
+                                                                        (watcher-state
+                                                                         (list watcher-present
+                                                                               (and watcher-present local-binding)))
+                                                                        (payload
+                                                                         (list 'enable-payload stage-index
+                                                                               initial-mode-value local-binding
+                                                                               cleanup-timing))
+                                                                        (primary-data (list payload))
+                                                                        (cleanup-condition
+                                                                         (if (eq condition 'error) 'quit 'error))
+                                                                        (cleanup-payload
+                                                                         (list 'cleanup-payload stage-index
+                                                                               cleanup-timing))
+                                                                        (original-stage (symbol-function stage))
+                                                                        (original-restore
+                                                                         (symbol-function
+                                                                          'nskk--isearch-restore-transaction-state))
+                                                                        (nskk-isearch-enable t)
+                                                                        (nskk--active-buffers nil)
+                                                                        (nskk-henkan-show-candidates-functions nil)
+                                                                        (nskk-henkan-hide-candidates-functions nil)
+                                                                        (nskk-henkan-select-candidate-by-key-function nil)
+                                                                        (kill-emacs-hook nil)
+                                                                        (nskk--learning-loaded nil)
+                                                                        (nskk-search-auto-save-learning nil)
+                                                                        stage-fired cleanup-fired caught)
+                                                                   (set-default 'nskk-mode default-mode-value)
+                                                                   (nskk--isearch-restore-transaction-state
+                                                                    (list resource-state ownership-state))
+                                                                   (nskk--isearch-restore-watcher-state watcher-state)
+                                                                   (with-temp-buffer
+                                                                     (if local-binding
+                                                                         (setq-local nskk-mode initial-mode-value)
+                                                                       (kill-local-variable 'nskk-mode))
+                                                                     (setq-local
+                                                                      local-minor-modes
+                                                                      (if initial-mode-value
+                                                                          (cons 'nskk-mode
+                                                                                (delq 'nskk-mode local-minor-modes))
+                                                                        (delq 'nskk-mode local-minor-modes)))
+                                                                     (let ((initial-minor-membership
+                                                                            (and (memq 'nskk-mode local-minor-modes) t)))
+                                                                       (unwind-protect
+                                                                           (progn
+                                                                             (setq
+                                                                              caught
+                                                                              (cl-letf
+                                                                                  (((symbol-function stage)
+                                                                                    (lambda (&rest arguments)
+                                                                                      (apply original-stage arguments)
+                                                                                      (setq stage-fired t)
+                                                                                      (signal condition primary-data)))
+                                                                                   ((symbol-function
+                                                                                     'nskk--isearch-restore-transaction-state)
+                                                                                    (lambda (state)
+                                                                                      (if cleanup-fired
+                                                                                          (funcall original-restore state)
+                                                                                        (setq cleanup-fired t)
+                                                                                        (if (eq cleanup-timing 'before)
+                                                                                            (signal cleanup-condition
+                                                                                                    cleanup-payload)
+                                                                                          (funcall original-restore state)
                                                                                           (signal cleanup-condition
-                                                                                                  cleanup-payload)
-                                                                                        (funcall original-restore state)
-                                                                                        (signal cleanup-condition
-                                                                                                cleanup-payload))))))
-                                                                              (condition-case data
-                                                                                  (progn
-                                                                                    (nskk-mode 1)
-                                                                                    nil)
-                                                                                ((error quit) data))))
-                                                                           (should stage-fired)
-                                                                           (should cleanup-fired)
-                                                                           (should (eq (car caught) condition))
-                                                                           (should (eq (cdr caught) primary-data))
-                                                                           (should (eq (car (cdr caught)) payload))
-                                                                           (should
-                                                                            (eq (local-variable-p 'nskk-mode)
-                                                                                local-binding))
-                                                                           (should (eq nskk-mode initial-mode-value))
-                                                                           (should
-                                                                            (eq (and (memq 'nskk-mode local-minor-modes) t)
-                                                                                initial-minor-membership))
-                                                                           (should
-                                                                            (equal (nskk-isearch-resource-state)
-                                                                                   resource-state))
-                                                                           (should
-                                                                            (equal (nskk--isearch-ownership-state)
-                                                                                   ownership-state))
-                                                                           (should
-                                                                            (equal (nskk--isearch-watcher-state)
-                                                                                   watcher-state))
-                                                                           (should-not nskk--active-buffers)
-                                                                           (nskk-mode 1)
-                                                                           (should nskk-mode)
-                                                                           (should
-                                                                            (equal (nskk-isearch-resource-state)
-                                                                                   '(t t t)))
-                                                                           (should
-                                                                            (equal
-                                                                             (nskk--isearch-ownership-state)
-                                                                             (cl-mapcar
-                                                                              (lambda (present owned)
-                                                                                (or owned (not present)))
-                                                                              resource-state ownership-state)))
-                                                                           (should
-                                                                            (equal (nskk--isearch-watcher-state)
-                                                                                   watcher-state)))
-                                                                       (when nskk-mode
-                                                                         (nskk-mode -1))))))))))))
-      (set-default 'nskk-mode saved-default-mode)
-      (nskk--isearch-restore-transaction-state saved-isearch-state)
-      (nskk--isearch-restore-watcher-state saved-watcher-state))
-    (should (= case-count 128))))
+                                                                                                  cleanup-payload))))))
+                                                                                (condition-case data
+                                                                                    (progn
+                                                                                      (nskk-mode 1)
+                                                                                      nil)
+                                                                                  ((error quit) data))))
+                                                                             (should stage-fired)
+                                                                             (should cleanup-fired)
+                                                                             (should (eq (car caught) condition))
+                                                                             (should (eq (cdr caught) primary-data))
+                                                                             (should (eq (car (cdr caught)) payload))
+                                                                             (should
+                                                                              (eq (local-variable-p 'nskk-mode)
+                                                                                  local-binding))
+                                                                             (should (eq nskk-mode initial-mode-value))
+                                                                             (should
+                                                                              (eq (and (memq 'nskk-mode local-minor-modes) t)
+                                                                                  initial-minor-membership))
+                                                                             (should
+                                                                              (equal (nskk-isearch-resource-state)
+                                                                                     resource-state))
+                                                                             (should
+                                                                              (equal (nskk--isearch-ownership-state)
+                                                                                     ownership-state))
+                                                                             (should
+                                                                              (equal (nskk--isearch-watcher-state)
+                                                                                     watcher-state))
+                                                                             (should-not nskk--active-buffers)
+                                                                             (nskk-mode 1)
+                                                                             (should nskk-mode)
+                                                                             (should
+                                                                              (equal (nskk-isearch-resource-state)
+                                                                                     '(t t t)))
+                                                                             (should
+                                                                              (equal
+                                                                               (nskk--isearch-ownership-state)
+                                                                               (cl-mapcar
+                                                                                (lambda (present owned)
+                                                                                  (or owned (not present)))
+                                                                                resource-state ownership-state)))
+                                                                             (should
+                                                                              (equal (nskk--isearch-watcher-state)
+                                                                                     watcher-state)))
+                                                                         (when nskk-mode
+                                                                           (nskk-mode -1))))))))))))
+        (set-default 'nskk-mode saved-default-mode)
+        (nskk--isearch-restore-transaction-state saved-isearch-state)
+        (nskk--isearch-restore-watcher-state saved-watcher-state))
+      (should (= case-count 128)))))
 
 (provide 'nskk-test)
 

@@ -63,7 +63,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
      (cl-letf (((nskk-state-romaji-buffer) ""))
        ,@body)))
 
-(ert-deftest nskk-input-test-romaji-fixtures-do-not-accumulate-facts ()
+(nskk-test-case nskk-input-test-romaji-fixtures-do-not-accumulate-facts
   (nskk-prolog-test-with-isolated-db
     (let ((nskk--romaji-table (make-hash-table :test 'equal))
           (custom '((romaji-to-kana "test-custom" "custom"))))
@@ -86,7 +86,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
         (dolist (rule nskk--standard-romaji-rules)
           (should (member (list (cons 'romaji-to-kana rule)) clauses)))))))
 
-(ert-deftest nskk-input-test-standard-romaji-restores-exact-missing-entries ()
+(nskk-test-case nskk-input-test-standard-romaji-restores-exact-missing-entries
   (nskk-prolog-test-with-isolated-db
     (dolist (index '(:list :hash :trie))
       (let ((nskk--romaji-table (make-hash-table :test 'equal))

@@ -117,13 +117,9 @@ valid) so the I3 regression guard can point a child Emacs process at it.")
 ;; `nskk-context-global-mode' carries an ;;;###autoload cookie, so it can be
 ;; turned on in a session where nskk.el and nskk-input.el were never loaded.
 ;; In that state `nskk-mode' is unbound and `nskk-set-mode-latin' is unfboundp.
-;; An earlier draft replaced the `(bound-and-true-p nskk-mode)' guard in
-;; `nskk--context-post-command' with a bare `(defvar nskk-mode)' forward
-;; declaration, which made every post-command run signal `void-variable
-;; nskk-mode' in exactly this state.  Reproduced honestly via a child Emacs
-;; batch process that requires only `nskk-context' -- inside the running test
-;; image `nskk' is already loaded, so `nskk-mode' cannot be made unbound by
-;; simply omitting a `require'.
+;; A child Emacs process requires only `nskk-context': inside the running
+;; test image `nskk' is already loaded, so omitting a `require' cannot
+;; reproduce the unloaded state.
 
 (defconst nskk-context-integration-test--i3-probe-form
   '(progn

@@ -49,6 +49,32 @@
   :package-version '(nskk . "0.1.0")
   :group 'nskk-state)
 
+(defcustom nskk-mode-display-alist
+  '((hiragana "かな" nskk-modeline-hiragana-face "Hiragana input mode" nskk-cursor-hiragana)
+    (katakana "カナ" nskk-modeline-katakana-face "Katakana input mode" nskk-cursor-katakana)
+    (katakana-半角 "ｶﾅ" nskk-modeline-katakana-face "Half-width katakana input mode" nskk-cursor-katakana)
+    (abbrev "aA" nskk-modeline-abbrev-face "Abbreviation mode" nskk-cursor-abbrev)
+    (ascii "SKK" nskk-modeline-direct-face "Direct/ASCII input mode" nskk-cursor-latin)
+    (latin "SKK" nskk-modeline-direct-face "Direct/ASCII input mode" nskk-cursor-latin)
+    (jisx0208-latin "全英" nskk-modeline-jisx0208-latin-face "Full-width latin input mode" nskk-cursor-jisx0208-latin))
+  "Display properties keyed by input mode.
+Each entry is (MODE LABEL FACE HELP CURSOR-FACE).  LABEL and HELP are
+strings; FACE styles the mode line and CURSOR-FACE supplies its background
+as the cursor color.  Nil CURSOR-FACE disables coloring for that entry.
+Changes take effect on the next display update, including in the same mode.
+This variable may be buffer-local.  Missing modes use the generic lighter
+and have no transient mode indicator or cursor color."
+  :type '(alist :key-type symbol
+                :value-type (list string face string
+                                  (choice (const nil) face)))
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-ui)
+
+(defun nskk-mode-display-properties (mode)
+  "Return (LABEL FACE HELP CURSOR-FACE) for MODE, or nil if absent.
+The returned list belongs to `nskk-mode-display-alist'; do not modify it."
+  (cdr (assq mode nskk-mode-display-alist)))
+
 (defface nskk-cursor-hiragana
   '((((background dark)) (:background "coral4"))
     (t (:background "pink")))
@@ -379,10 +405,9 @@ still allocate a second copy of TEXT, so that case skips it."
 ;;
 ;; NSKK's candidate displays are zero-length overlays carrying an
 ;; `after-string', several of which resolve to the same anchor -- the end of
-;; the conversion overlay.  These constants only give names to the integers
-;; those sites already used; the numbers are unchanged.
+;; the conversion overlay.
 ;;
-;; What the numbers buy is narrower than it looks.  The Emacs Lisp manual
+;; The Emacs Lisp manual
 ;; ("Overlay Properties") defines `priority' for overlays that "cover the same
 ;; character", and breaks ties by nesting -- "if neither is nested in the other
 ;; then you should not make assumptions about which overlay will prevail".  A
@@ -436,13 +461,10 @@ VAR first ensures cleanup failures cannot leave a stale reference."
        (when (overlayp ,old-overlay)
          (delete-overlay ,old-overlay)))))
 
-;;;; Shared Buffer-Local State — Accessor API
+;;;; Shared Buffer-Local State: Accessor API
 ;;
-;; Each of the 8 buffer-local variables above has a getter/setter pair
-;; generated below.  Other modules go through these accessors rather than
-;; referencing the `nskk--' variables directly, so state.el remains their
-;; single owner.  Each accessor targets one fixed, always-bound
-;; `defvar-local', so a plain getter/setter pair is the complete API --
+;; Other modules use these accessors so state.el owns the buffer-local
+;; variables.  Each accessor targets a fixed, always-bound `defvar-local';
 ;; there is no unknown-slot case to distinguish from a nil value.
 
 (defmacro nskk-define-buffer-local-getter (var)
